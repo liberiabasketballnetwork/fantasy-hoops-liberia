@@ -1,9 +1,17 @@
+import dns from "dns";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import morgan from "morgan";
 import rateLimit from "express-rate-limit";
 import dotenv from "dotenv";
+
+// Work around a known Node.js issue where outbound HTTPS requests to Google's
+// APIs intermittently fail with "Premature close" when Node resolves a
+// hostname to an IPv6 address the network path can't actually reach.
+// Forcing IPv4-first resolution avoids it. Must run before any networked
+// modules (like googleapis) make their first request.
+dns.setDefaultResultOrder("ipv4first");
 
 import authRoutes from "./routes/authRoutes";
 import playerRoutes from "./routes/playerRoutes";

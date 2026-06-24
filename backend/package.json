@@ -5,8 +5,8 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc -p .",
-    "start": "node dist/server.js",
+    "build": "npm install --include=dev --no-save && tsc -p .",
+    "start": "node --dns-result-order=ipv4first dist/server.js",
     "lint": "echo \"no linter configured\""
   },
   "dependencies": {
@@ -37,6 +37,6 @@
     "typescript": "^5.5.4"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "20.x"
   }
 }
