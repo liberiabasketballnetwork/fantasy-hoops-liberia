@@ -5,7 +5,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/server.ts",
-    "build": "tsc -p .",
+    "build": "npm install --include=dev --no-save && tsc -p .",
     "start": "node dist/server.js",
     "lint": "echo \"no linter configured\""
   },
