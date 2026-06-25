@@ -40,7 +40,7 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: "One or more selected players could not be found" });
     }
 
-    const salaryCapEnabled = (await getSetting("salary_cap_enabled", "true")) === "true";
+    const salaryCapEnabled = (await getSetting("salary_cap_enabled", "true")).toLowerCase() === "true";
     if (salaryCapEnabled) {
       const budgetCap = Number(await getSetting("budget_cap", "100"));
       const totalCost = selectedPlayers.reduce((sum, p) => sum + Number(p.fantasy_price || 0), 0);

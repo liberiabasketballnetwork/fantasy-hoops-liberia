@@ -29,7 +29,7 @@ router.get("/settings", async (_req, res) => {
     const salaryCapEnabled = await getSetting("salary_cap_enabled", "true");
     const budgetCap = await getSetting("budget_cap", "100");
     res.json({
-      salary_cap_enabled: salaryCapEnabled === "true",
+      salary_cap_enabled: salaryCapEnabled.toLowerCase() === "true",
       budget_cap: Number(budgetCap),
     });
   } catch (err) {
