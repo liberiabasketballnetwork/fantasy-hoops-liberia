@@ -10,6 +10,8 @@ import {
 
 const router = express.Router();
 
+const BUDGET_CAP = 100;
+
 const lineupSchema = z.object({
   week_id: z.string(),
   player_ids: z.array(z.string()).length(5, "You must select exactly 5 players"),
@@ -29,6 +31,20 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
     if (!week) return res.status(404).json({ error: "Gameweek not found" });
     if (String(week.is_locked).toUpperCase() === "TRUE") {
       return res.status(403).json({ error: "Submissions are locked for this gameweek" });
+    }
+
+    // Enforce the salary cap server-side too — the budget UI is a convenience,
+    // not the source of truth, so a direct API call can't bypass it.
+    const allPlayers = await getSheetData("Players");
+    const selectedPlayers = allPlayers.filter((p) => parsed.player_ids.includes(p.player_id));
+    if (selectedPlayers.length !== 5) {
+      return res.status(400).json({ error: "One or more selected players could not be found" });
+    }
+    const totalCost = selectedPlayers.reduce((sum, p) => sum + Number(p.fantasy_price || 0), 0);
+    if (totalCost > BUDGET_CAP) {
+      return res.status(400).json({
+        error: `Lineup exceeds the ${BUDGET_CAP}-credit budget cap (this lineup costs ${totalCost}).`,
+      });
     }
 
     // Prevent duplicate submissions in the same week

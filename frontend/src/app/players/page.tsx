@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
+const BUDGET_CAP = 100;
+
 export default function PlayersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -30,14 +32,29 @@ export default function PlayersPage() {
     load();
   }, []);
 
+  const spent = selected.reduce((sum, id) => {
+    const p = players.find((pl) => pl.player_id === id);
+    return sum + Number(p?.fantasy_price || 0);
+  }, 0);
+  const remaining = BUDGET_CAP - spent;
+
   function toggleSelect(playerId: string) {
     setMessage("");
+    const player = players.find((p) => p.player_id === playerId);
+    const price = Number(player?.fantasy_price || 0);
+
     if (selected.includes(playerId)) {
       setSelected(selected.filter((id) => id !== playerId));
       if (captain === playerId) setCaptain("");
     } else {
       if (selected.length >= 5) {
         setMessage("You can only select 5 players. Remove one first.");
+        return;
+      }
+      if (spent + price > BUDGET_CAP) {
+        setMessage(
+          `Not enough budget left. You have ${remaining} credits remaining and this player costs ${price}.`
+        );
         return;
       }
       setSelected([...selected, playerId]);
@@ -55,6 +72,10 @@ export default function PlayersPage() {
     }
     if (!captain) {
       setMessage("Choose a captain from your selected players.");
+      return;
+    }
+    if (spent > BUDGET_CAP) {
+      setMessage("Your lineup goes over the budget cap. Remove a player first.");
       return;
     }
     if (!weekId) {
@@ -87,16 +108,35 @@ export default function PlayersPage() {
         </p>
       </div>
 
+      <div className="card p-4 flex items-center justify-between sticky top-16 z-10">
+        <div>
+          <p className="text-xs text-gray-400">Budget remaining</p>
+          <p className={`text-xl font-bold ${remaining < 0 ? "text-red-400" : "text-court-orange"}`}>
+            {remaining} / {BUDGET_CAP} credits
+          </p>
+        </div>
+        <div className="w-1/2 h-2 bg-[#1f2733] rounded overflow-hidden">
+          <div
+            className={`h-full ${spent > BUDGET_CAP ? "bg-red-500" : "bg-court-orange"}`}
+            style={{ width: `${Math.min((spent / BUDGET_CAP) * 100, 100)}%` }}
+          />
+        </div>
+      </div>
+
       {message && <div className="card p-3 text-sm">{message}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
         {players.map((p) => {
           const isSelected = selected.includes(p.player_id);
           const isCaptain = captain === p.player_id;
+          const price = Number(p.fantasy_price || 0);
+          const tooExpensive = !isSelected && price > remaining;
           return (
             <div
               key={p.player_id}
-              className={`card p-4 cursor-pointer ${isSelected ? "border-court-orange" : ""}`}
+              className={`card p-4 cursor-pointer ${isSelected ? "border-court-orange" : ""} ${
+                tooExpensive ? "opacity-50" : ""
+              }`}
               onClick={() => toggleSelect(p.player_id)}
             >
               <div className="flex justify-between items-start">
@@ -104,19 +144,22 @@ export default function PlayersPage() {
                   <p className="font-bold">{p.full_name}</p>
                   <p className="text-xs text-gray-400">{p.position}</p>
                 </div>
-                {isSelected && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setCaptain(p.player_id);
-                    }}
-                    className={`text-xs px-2 py-1 rounded ${
-                      isCaptain ? "bg-court-orange" : "bg-[#1f2733]"
-                    }`}
-                  >
-                    {isCaptain ? "★ Captain" : "Make Captain"}
-                  </button>
-                )}
+                <div className="flex flex-col items-end gap-1">
+                  <span className="text-xs font-bold text-court-orange">{price} cr</span>
+                  {isSelected && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setCaptain(p.player_id);
+                      }}
+                      className={`text-xs px-2 py-1 rounded ${
+                        isCaptain ? "bg-court-orange" : "bg-[#1f2733]"
+                      }`}
+                    >
+                      {isCaptain ? "★ Captain" : "Make Captain"}
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="flex gap-3 mt-3 text-xs text-gray-400">
                 <span>PPG {p.average_points || 0}</span>
@@ -137,3 +180,4 @@ export default function PlayersPage() {
     </div>
   );
 }
+

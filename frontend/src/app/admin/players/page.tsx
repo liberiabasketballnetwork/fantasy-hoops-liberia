@@ -13,7 +13,7 @@ export default function AdminPlayersPage() {
     full_name: "",
     team_id: "",
     position: "PG",
-    fantasy_price: 0,
+    fantasy_price: 10,
     average_points: 0,
     average_rebounds: 0,
     average_assists: 0,
@@ -41,6 +41,15 @@ export default function AdminPlayersPage() {
     }
   }
 
+  async function updatePrice(playerId: string, newPrice: number) {
+    try {
+      await api.put(`/admin/edit-player/${playerId}`, { fantasy_price: newPrice });
+      load();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to update price.");
+    }
+  }
+
   async function deletePlayer(id: string) {
     try {
       await api.delete(`/admin/delete-player/${id}`);
@@ -59,6 +68,11 @@ export default function AdminPlayersPage() {
 
       <div className="card p-5">
         <h2 className="font-bold mb-3">Add Player</h2>
+        <p className="text-xs text-gray-400 mb-3">
+          Set a fantasy price for each player based on how strong they are — users get a fixed
+          budget (default 100 credits) to build their squad of 5, so pricing top players higher
+          stops everyone from just picking the same all-star lineup.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input className="input-field" placeholder="Full name" value={form.full_name}
             onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
@@ -73,6 +87,8 @@ export default function AdminPlayersPage() {
             onChange={(e) => setForm({ ...form, position: e.target.value })}>
             {["PG", "SG", "SF", "PF", "C"].map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
+          <input type="number" className="input-field" placeholder="Fantasy price (e.g. 5-25)" value={form.fantasy_price}
+            onChange={(e) => setForm({ ...form, fantasy_price: Number(e.target.value) })} />
           <input type="number" className="input-field" placeholder="Avg points" value={form.average_points}
             onChange={(e) => setForm({ ...form, average_points: Number(e.target.value) })} />
           <input type="number" className="input-field" placeholder="Avg rebounds" value={form.average_rebounds}
@@ -89,6 +105,7 @@ export default function AdminPlayersPage() {
             <tr>
               <th className="text-left p-3">Name</th>
               <th className="text-left p-3">Position</th>
+              <th className="text-left p-3">Price</th>
               <th className="text-left p-3">PPG</th>
               <th className="text-left p-3">RPG</th>
               <th className="text-left p-3">APG</th>
@@ -100,6 +117,17 @@ export default function AdminPlayersPage() {
               <tr key={p.player_id} className="border-t border-[#1f2733]">
                 <td className="p-3">{p.full_name}</td>
                 <td className="p-3">{p.position}</td>
+                <td className="p-3">
+                  <input
+                    type="number"
+                    defaultValue={p.fantasy_price || 0}
+                    className="input-field w-20 py-1"
+                    onBlur={(e) => {
+                      const val = Number(e.target.value);
+                      if (val !== Number(p.fantasy_price)) updatePrice(p.player_id, val);
+                    }}
+                  />
+                </td>
                 <td className="p-3">{p.average_points}</td>
                 <td className="p-3">{p.average_rebounds}</td>
                 <td className="p-3">{p.average_assists}</td>
@@ -114,3 +142,4 @@ export default function AdminPlayersPage() {
     </div>
   );
 }
+
