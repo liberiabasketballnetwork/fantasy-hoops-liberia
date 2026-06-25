@@ -118,6 +118,7 @@ export default function AdminPlayersPage() {
             <tr>
               <th className="text-left p-3">Photo</th>
               <th className="text-left p-3">Name</th>
+              <th className="text-left p-3">Team</th>
               <th className="text-left p-3">Position</th>
               <th className="text-left p-3">Price</th>
               <th className="text-left p-3">PPG</th>
@@ -155,6 +156,9 @@ export default function AdminPlayersPage() {
                   </div>
                 </td>
                 <td className="p-3">{p.full_name}</td>
+                <td className="p-3 text-gray-400">
+                  {teams.find((t) => t.team_id === p.team_id)?.team_name || "—"}
+                </td>
                 <td className="p-3">{p.position}</td>
                 <td className="p-3">
                   <input

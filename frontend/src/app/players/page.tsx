@@ -9,6 +9,8 @@ export default function PlayersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const [players, setPlayers] = useState<any[]>([]);
+  const [teams, setTeams] = useState<any[]>([]);
+  const [teamFilter, setTeamFilter] = useState<string>("");
   const [selected, setSelected] = useState<string[]>([]);
   const [captain, setCaptain] = useState<string>("");
   const [weekId, setWeekId] = useState<string>("");
@@ -20,12 +22,14 @@ export default function PlayersPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [playersRes, lbRes, settingsRes] = await Promise.all([
+        const [playersRes, teamsRes, lbRes, settingsRes] = await Promise.all([
           api.get("/players"),
+          api.get("/teams"),
           api.get("/leaderboard"),
           api.get("/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
         ]);
         setPlayers(playersRes.data.players || []);
+        setTeams(teamsRes.data.teams || []);
         if (lbRes.data.week) setWeekId(lbRes.data.week.week_id);
         setSalaryCapEnabled(settingsRes.data.salary_cap_enabled);
         setBudgetCap(settingsRes.data.budget_cap);
@@ -35,6 +39,12 @@ export default function PlayersPage() {
     }
     load();
   }, []);
+
+  function teamName(teamId: string) {
+    return teams.find((t) => t.team_id === teamId)?.team_name || "Free Agent";
+  }
+
+  const visiblePlayers = teamFilter ? players.filter((p) => p.team_id === teamFilter) : players;
 
   const spent = selected.reduce((sum, id) => {
     const p = players.find((pl) => pl.player_id === id);
@@ -112,6 +122,16 @@ export default function PlayersPage() {
         </p>
       </div>
 
+      <div className="flex items-center gap-3">
+        <label className="text-sm text-gray-400">Filter by team:</label>
+        <select className="input-field w-auto" value={teamFilter} onChange={(e) => setTeamFilter(e.target.value)}>
+          <option value="">All teams</option>
+          {teams.map((t) => (
+            <option key={t.team_id} value={t.team_id}>{t.team_name}</option>
+          ))}
+        </select>
+      </div>
+
       {salaryCapEnabled && (
         <div className="card p-4 flex items-center justify-between sticky top-16 z-10">
           <div>
@@ -132,7 +152,7 @@ export default function PlayersPage() {
       {message && <div className="card p-3 text-sm">{message}</div>}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-        {players.map((p) => {
+        {visiblePlayers.map((p) => {
           const isSelected = selected.includes(p.player_id);
           const isCaptain = captain === p.player_id;
           const price = Number(p.fantasy_price || 0);
@@ -162,7 +182,7 @@ export default function PlayersPage() {
                   )}
                   <div>
                     <p className="font-bold">{p.full_name}</p>
-                    <p className="text-xs text-gray-400">{p.position}</p>
+                    <p className="text-xs text-gray-400">{p.position} · {teamName(p.team_id)}</p>
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
@@ -192,7 +212,7 @@ export default function PlayersPage() {
             </div>
           );
         })}
-        {players.length === 0 && (
+        {visiblePlayers.length === 0 && (
           <p className="text-gray-500 text-sm">No players available yet. Check back soon.</p>
         )}
       </div>
