@@ -51,6 +51,16 @@ export default function AdminPlayersPage() {
     }
   }
 
+  async function updatePhoto(playerId: string, newPhotoUrl: string) {
+    try {
+      await api.put(`/admin/edit-player/${playerId}`, { photo_url: newPhotoUrl });
+      setMessage("✅ Photo updated.");
+      load();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to update photo.");
+    }
+  }
+
   async function deletePlayer(id: string) {
     try {
       await api.delete(`/admin/delete-player/${id}`);
@@ -106,7 +116,7 @@ export default function AdminPlayersPage() {
         <table className="w-full text-sm">
           <thead className="bg-[#0b0f14] text-gray-400">
             <tr>
-              <th className="p-3"></th>
+              <th className="text-left p-3">Photo</th>
               <th className="text-left p-3">Name</th>
               <th className="text-left p-3">Position</th>
               <th className="text-left p-3">Price</th>
@@ -120,17 +130,29 @@ export default function AdminPlayersPage() {
             {players.map((p) => (
               <tr key={p.player_id} className="border-t border-[#1f2733]">
                 <td className="p-3">
-                  {p.photo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={p.photo_url}
-                      alt={p.full_name}
-                      className="w-8 h-8 rounded-full object-cover"
-                      onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                  <div className="flex items-center gap-2">
+                    {p.photo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={p.photo_url}
+                        alt={p.full_name}
+                        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
+                        onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                      />
+                    ) : (
+                      <span className="text-gray-500 flex-shrink-0">🏀</span>
+                    )}
+                    <input
+                      type="text"
+                      defaultValue={p.photo_url || ""}
+                      placeholder="Paste photo URL"
+                      className="input-field w-40 py-1 text-xs"
+                      onBlur={(e) => {
+                        const val = e.target.value.trim();
+                        if (val !== (p.photo_url || "")) updatePhoto(p.player_id, val);
+                      }}
                     />
-                  ) : (
-                    <span className="text-gray-500">🏀</span>
-                  )}
+                  </div>
                 </td>
                 <td className="p-3">{p.full_name}</td>
                 <td className="p-3">{p.position}</td>
