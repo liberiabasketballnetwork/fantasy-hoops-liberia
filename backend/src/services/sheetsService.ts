@@ -7,6 +7,35 @@ import { sheets, SPREADSHEET_ID, SHEET_HEADERS } from "../config/googleSheets";
  * and to stay well under Google Sheets API quotas.
  */
 
+/**
+ * Google's OAuth token endpoint occasionally drops the connection mid-response
+ * ("Premature close" / ECONNRESET-style errors). These are transient, not
+ * actual auth failures, so every Sheets API call is retried a few times with
+ * a short backoff before giving up.
+ */
+async function withRetry<T>(fn: () => Promise<T>, retries = 3, delayMs = 500): Promise<T> {
+  let lastError: any;
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      lastError = err;
+      const message = String(err?.message || "");
+      const isTransient =
+        message.includes("Premature close") ||
+        message.includes("ECONNRESET") ||
+        message.includes("ETIMEDOUT") ||
+        message.includes("socket hang up") ||
+        err?.code === "ECONNRESET";
+
+      if (!isTransient || attempt === retries) throw err;
+
+      await new Promise((res) => setTimeout(res, delayMs * attempt));
+    }
+  }
+  throw lastError;
+}
+
 type Row = Record<string, any>;
 
 interface CacheEntry {
@@ -58,10 +87,9 @@ export async function getSheetData(sheetName: string, useCache = true): Promise<
   if (!headers) throw new Error(`Unknown sheet: ${sheetName}`);
 
   const range = `${sheetName}!A2:${colLetter(headers.length - 1)}`;
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range,
-  });
+  const res = await withRetry(() =>
+    sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range })
+  );
 
   const data = rowsToObjects(res.data.values || [], headers);
   cache.set(sheetName, { data, expiresAt: Date.now() + CACHE_TTL_MS });
@@ -77,13 +105,15 @@ export async function appendRow(sheetName: string, rowObject: Row): Promise<Row>
 
   const values = [headers.map((h) => rowObject[h] ?? "")];
 
-  await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `${sheetName}!A:A`,
-    valueInputOption: "USER_ENTERED",
-    insertDataOption: "INSERT_ROWS",
-    requestBody: { values },
-  });
+  await withRetry(() =>
+    sheets.spreadsheets.values.append({
+      spreadsheetId: SPREADSHEET_ID,
+      range: `${sheetName}!A:A`,
+      valueInputOption: "USER_ENTERED",
+      insertDataOption: "INSERT_ROWS",
+      requestBody: { values },
+    })
+  );
 
   invalidateCache(sheetName);
   return rowObject;
@@ -100,10 +130,9 @@ async function findSheetRowNumber(
 ): Promise<number> {
   const headers = SHEET_HEADERS[sheetName];
   const range = `${sheetName}!A2:${colLetter(headers.length - 1)}`;
-  const res = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range,
-  });
+  const res = await withRetry(() =>
+    sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range })
+  );
   const values = res.data.values || [];
   const idIndex = headers.indexOf(idField);
 
@@ -132,10 +161,9 @@ export async function updateRow(
 
   // Read existing row so we only overwrite fields the caller provided.
   const existingRange = `${sheetName}!A${rowNumber}:${colLetter(headers.length - 1)}${rowNumber}`;
-  const existingRes = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: existingRange,
-  });
+  const existingRes = await withRetry(() =>
+    sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: existingRange })
+  );
   const existingValues = (existingRes.data.values && existingRes.data.values[0]) || [];
 
   const merged: Row = {};
@@ -143,12 +171,14 @@ export async function updateRow(
     merged[h] = updates[h] !== undefined ? updates[h] : existingValues[i] ?? "";
   });
 
-  await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID,
-    range: existingRange,
-    valueInputOption: "USER_ENTERED",
-    requestBody: { values: [headers.map((h) => merged[h])] },
-  });
+  await withRetry(() =>
+    sheets.spreadsheets.values.update({
+      spreadsheetId: SPREADSHEET_ID,
+      range: existingRange,
+      valueInputOption: "USER_ENTERED",
+      requestBody: { values: [headers.map((h) => merged[h])] },
+    })
+  );
 
   invalidateCache(sheetName);
   return merged;
@@ -166,29 +196,31 @@ export async function deleteRow(
   const rowNumber = await findSheetRowNumber(sheetName, idField, idValue);
   if (rowNumber === -1) return false;
 
-  const meta = await sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID });
+  const meta = await withRetry(() => sheets.spreadsheets.get({ spreadsheetId: SPREADSHEET_ID }));
   const sheet = meta.data.sheets?.find((s) => s.properties?.title === sheetName);
   if (!sheet || sheet.properties?.sheetId === undefined) {
     throw new Error(`Could not resolve sheetId for ${sheetName}`);
   }
 
-  await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SPREADSHEET_ID,
-    requestBody: {
-      requests: [
-        {
-          deleteDimension: {
-            range: {
-              sheetId: sheet.properties.sheetId,
-              dimension: "ROWS",
-              startIndex: rowNumber - 1,
-              endIndex: rowNumber,
+  await withRetry(() =>
+    sheets.spreadsheets.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        requests: [
+          {
+            deleteDimension: {
+              range: {
+                sheetId: sheet.properties!.sheetId!,
+                dimension: "ROWS",
+                startIndex: rowNumber - 1,
+                endIndex: rowNumber,
+              },
             },
           },
-        },
-      ],
-    },
-  });
+        ],
+      },
+    })
+  );
 
   invalidateCache(sheetName);
   return true;
@@ -272,4 +304,22 @@ export async function resetWeek(weekId: string): Promise<void> {
 
 export function clearAllCache() {
   cache.clear();
+}
+
+/**
+ * Simple key-value settings store backed by the Settings sheet.
+ * Used for things like toggling the salary cap system on/off.
+ */
+export async function getSetting(key: string, fallback: string = ""): Promise<string> {
+  const row = await findRowByField("Settings", "setting_key", key);
+  return row ? String(row.setting_value) : fallback;
+}
+
+export async function setSetting(key: string, value: string): Promise<void> {
+  const existing = await findRowByField("Settings", "setting_key", key);
+  if (existing) {
+    await updateRow("Settings", "setting_key", key, { setting_value: value });
+  } else {
+    await appendRow("Settings", { setting_key: key, setting_value: value });
+  }
 }

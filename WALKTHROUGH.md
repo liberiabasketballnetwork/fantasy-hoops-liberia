@@ -23,7 +23,7 @@ roughly 1–2 hours the first time. Everything used is **100% free**.
    Rename each tab **exactly** as written below (capitalization matters):
 
    `Users`, `Teams`, `Players`, `Weekly_Gameweek`, `User_Lineups`, `Lineup_Players`,
-   `Games`, `Player_Stats`, `Fantasy_Scoring`, `Leaderboard`, `Sponsors`
+   `Games`, `Player_Stats`, `Fantasy_Scoring`, `Leaderboard`, `Sponsors`, `Settings`
 
 4. For each tab, type these column headers into **row 1**, starting at cell A1
    (one header per cell, left to right):
@@ -32,7 +32,7 @@ roughly 1–2 hours the first time. Everything used is **100% free**.
 
    **Teams**: `team_id, team_name, division, logo_url, created_at`
 
-   **Players**: `player_id, full_name, team_id, position, fantasy_price, status, average_points, average_rebounds, average_assists, created_at`
+   **Players**: `player_id, full_name, team_id, position, fantasy_price, status, average_points, average_rebounds, average_assists, photo_url, created_at`
 
    **Weekly_Gameweek**: `week_id, start_date, end_date, submission_deadline, is_locked, created_at`
 
@@ -50,9 +50,20 @@ roughly 1–2 hours the first time. Everything used is **100% free**.
 
    **Sponsors**: `sponsor_id, company_name, prize, week_id`
 
+   **Settings**: `setting_key, setting_value`
+
 5. Copy the long ID from your sheet's URL — it's the part between `/d/` and `/edit`:
    `https://docs.google.com/spreadsheets/d/THIS_PART_IS_YOUR_SHEET_ID/edit`
    Save this somewhere — you'll need it later as `GOOGLE_SHEET_ID`.
+
+> **Already set up your sheet before this update?** You just need two small additions,
+> no need to redo anything:
+> - Add a new tab named exactly `Settings` with headers `setting_key` (cell A1) and
+>   `setting_value` (cell B1). Leave the rest blank — the app creates rows automatically.
+> - On your existing `Players` tab, add a new column header `photo_url` right after
+>   `average_assists` (and before `created_at`, if you want to keep things in the same
+>   order as new sheets — though the app reads columns by header name, not position, so
+>   it'll work either way as long as the header text matches exactly).
 
 ---
 

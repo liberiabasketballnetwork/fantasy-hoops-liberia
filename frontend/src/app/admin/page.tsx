@@ -14,16 +14,19 @@ export default function AdminDashboard() {
 
   const [weekForm, setWeekForm] = useState({ start_date: "", end_date: "", submission_deadline: "" });
   const [teamForm, setTeamForm] = useState({ team_name: "", division: "" });
+  const [settings, setSettings] = useState({ salary_cap_enabled: true, budget_cap: 100 });
 
   async function loadAll() {
     try {
-      const [weeksRes, teamsRes, usersRes] = await Promise.all([
+      const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
         api.get("/leaderboard").catch(() => ({ data: { week: null } })),
         api.get("/teams"),
         api.get("/admin/users"),
+        api.get("/admin/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
       ]);
       setTeams(teamsRes.data.teams || []);
       setUsers(usersRes.data.users || []);
+      setSettings(settingsRes.data);
       if (weeksRes.data.week) setWeeks([weeksRes.data.week]);
     } catch (e) {
       console.error(e);
@@ -86,6 +89,27 @@ export default function AdminDashboard() {
     }
   }
 
+  async function toggleSalaryCap() {
+    const newValue = !settings.salary_cap_enabled;
+    setSettings({ ...settings, salary_cap_enabled: newValue });
+    try {
+      await api.post("/admin/settings", { salary_cap_enabled: newValue });
+      setMessage(`✅ Salary cap ${newValue ? "enabled" : "disabled"}.`);
+    } catch (err: any) {
+      setSettings({ ...settings, salary_cap_enabled: !newValue });
+      setMessage(err?.response?.data?.error || "Failed to update setting.");
+    }
+  }
+
+  async function updateBudgetCap(value: number) {
+    setSettings({ ...settings, budget_cap: value });
+    try {
+      await api.post("/admin/settings", { budget_cap: value });
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to update budget.");
+    }
+  }
+
   if (loading || !user) return <p className="text-center text-gray-400">Loading admin panel...</p>;
 
   return (
@@ -112,6 +136,40 @@ export default function AdminDashboard() {
       </div>
 
       {message && <div className="card p-3 text-sm">{message}</div>}
+
+      <div className="card p-5">
+        <h2 className="font-bold mb-3">Salary Cap System</h2>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-sm">
+              {settings.salary_cap_enabled
+                ? "Enabled — users must stay within their budget when picking 5 players."
+                : "Disabled — users can pick any 5 players regardless of price."}
+            </p>
+          </div>
+          <button
+            onClick={toggleSalaryCap}
+            className={`px-4 py-2 rounded-lg text-sm font-semibold ${
+              settings.salary_cap_enabled ? "bg-court-orange" : "bg-[#1f2733]"
+            }`}
+          >
+            {settings.salary_cap_enabled ? "ON — Click to Disable" : "OFF — Click to Enable"}
+          </button>
+        </div>
+
+        {settings.salary_cap_enabled && (
+          <div className="mt-4 flex items-center gap-3">
+            <label className="text-sm text-gray-400">Budget per user:</label>
+            <input
+              type="number"
+              className="input-field w-28"
+              value={settings.budget_cap}
+              onChange={(e) => updateBudgetCap(Number(e.target.value))}
+            />
+            <span className="text-sm text-gray-400">credits</span>
+          </div>
+        )}
+      </div>
 
       <div className="card p-5">
         <h2 className="font-bold mb-3">Create New Gameweek</h2>

@@ -9,12 +9,49 @@ import {
   deleteRow,
   lockWeek as lockWeekFn,
   resetWeek as resetWeekFn,
+  getSetting,
+  setSetting,
 } from "../services/sheetsService";
 import { calculateScoresForWeek } from "../services/scoringEngine";
 
 const router = express.Router();
 
 router.use(authenticate, requireAdmin);
+
+// ---------- Settings ----------
+router.get("/settings", async (_req, res) => {
+  try {
+    const salaryCapEnabled = await getSetting("salary_cap_enabled", "true");
+    const budgetCap = await getSetting("budget_cap", "100");
+    res.json({
+      salary_cap_enabled: salaryCapEnabled === "true",
+      budget_cap: Number(budgetCap),
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch settings" });
+  }
+});
+
+router.post("/settings", async (req, res) => {
+  try {
+    const schema = z.object({
+      salary_cap_enabled: z.boolean().optional(),
+      budget_cap: z.number().optional(),
+    });
+    const data = schema.parse(req.body);
+
+    if (data.salary_cap_enabled !== undefined) {
+      await setSetting("salary_cap_enabled", String(data.salary_cap_enabled));
+    }
+    if (data.budget_cap !== undefined) {
+      await setSetting("budget_cap", String(data.budget_cap));
+    }
+
+    res.json({ message: "Settings updated" });
+  } catch (err: any) {
+    res.status(400).json({ error: "Failed to update settings", details: err.errors || err.message });
+  }
+});
 
 // ---------- Teams ----------
 router.post("/add-team", async (req, res) => {
@@ -49,6 +86,7 @@ router.post("/add-player", async (req, res) => {
       average_points: z.number().optional().default(0),
       average_rebounds: z.number().optional().default(0),
       average_assists: z.number().optional().default(0),
+      photo_url: z.string().optional().default(""),
     });
     const data = schema.parse(req.body);
     const player = {

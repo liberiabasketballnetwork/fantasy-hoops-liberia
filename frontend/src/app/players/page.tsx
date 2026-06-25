@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
-const BUDGET_CAP = 100;
-
 export default function PlayersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -16,15 +14,21 @@ export default function PlayersPage() {
   const [weekId, setWeekId] = useState<string>("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [salaryCapEnabled, setSalaryCapEnabled] = useState(true);
+  const [budgetCap, setBudgetCap] = useState(100);
 
   useEffect(() => {
     async function load() {
       try {
-        const playersRes = await api.get("/players");
+        const [playersRes, lbRes, settingsRes] = await Promise.all([
+          api.get("/players"),
+          api.get("/leaderboard"),
+          api.get("/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
+        ]);
         setPlayers(playersRes.data.players || []);
-
-        const lbRes = await api.get("/leaderboard");
         if (lbRes.data.week) setWeekId(lbRes.data.week.week_id);
+        setSalaryCapEnabled(settingsRes.data.salary_cap_enabled);
+        setBudgetCap(settingsRes.data.budget_cap);
       } catch (e) {
         console.error(e);
       }
@@ -36,7 +40,7 @@ export default function PlayersPage() {
     const p = players.find((pl) => pl.player_id === id);
     return sum + Number(p?.fantasy_price || 0);
   }, 0);
-  const remaining = BUDGET_CAP - spent;
+  const remaining = budgetCap - spent;
 
   function toggleSelect(playerId: string) {
     setMessage("");
@@ -51,7 +55,7 @@ export default function PlayersPage() {
         setMessage("You can only select 5 players. Remove one first.");
         return;
       }
-      if (spent + price > BUDGET_CAP) {
+      if (salaryCapEnabled && spent + price > budgetCap) {
         setMessage(
           `Not enough budget left. You have ${remaining} credits remaining and this player costs ${price}.`
         );
@@ -74,7 +78,7 @@ export default function PlayersPage() {
       setMessage("Choose a captain from your selected players.");
       return;
     }
-    if (spent > BUDGET_CAP) {
+    if (salaryCapEnabled && spent > budgetCap) {
       setMessage("Your lineup goes over the budget cap. Remove a player first.");
       return;
     }
@@ -108,20 +112,22 @@ export default function PlayersPage() {
         </p>
       </div>
 
-      <div className="card p-4 flex items-center justify-between sticky top-16 z-10">
-        <div>
-          <p className="text-xs text-gray-400">Budget remaining</p>
-          <p className={`text-xl font-bold ${remaining < 0 ? "text-red-400" : "text-court-orange"}`}>
-            {remaining} / {BUDGET_CAP} credits
-          </p>
+      {salaryCapEnabled && (
+        <div className="card p-4 flex items-center justify-between sticky top-16 z-10">
+          <div>
+            <p className="text-xs text-gray-400">Budget remaining</p>
+            <p className={`text-xl font-bold ${remaining < 0 ? "text-red-400" : "text-court-orange"}`}>
+              {remaining} / {budgetCap} credits
+            </p>
+          </div>
+          <div className="w-1/2 h-2 bg-[#1f2733] rounded overflow-hidden">
+            <div
+              className={`h-full ${spent > budgetCap ? "bg-red-500" : "bg-court-orange"}`}
+              style={{ width: `${Math.min((spent / budgetCap) * 100, 100)}%` }}
+            />
+          </div>
         </div>
-        <div className="w-1/2 h-2 bg-[#1f2733] rounded overflow-hidden">
-          <div
-            className={`h-full ${spent > BUDGET_CAP ? "bg-red-500" : "bg-court-orange"}`}
-            style={{ width: `${Math.min((spent / BUDGET_CAP) * 100, 100)}%` }}
-          />
-        </div>
-      </div>
+      )}
 
       {message && <div className="card p-3 text-sm">{message}</div>}
 
@@ -130,7 +136,7 @@ export default function PlayersPage() {
           const isSelected = selected.includes(p.player_id);
           const isCaptain = captain === p.player_id;
           const price = Number(p.fantasy_price || 0);
-          const tooExpensive = !isSelected && price > remaining;
+          const tooExpensive = salaryCapEnabled && !isSelected && price > remaining;
           return (
             <div
               key={p.player_id}
@@ -139,13 +145,30 @@ export default function PlayersPage() {
               }`}
               onClick={() => toggleSelect(p.player_id)}
             >
-              <div className="flex justify-between items-start">
-                <div>
-                  <p className="font-bold">{p.full_name}</p>
-                  <p className="text-xs text-gray-400">{p.position}</p>
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex items-center gap-3">
+                  {p.photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.photo_url}
+                      alt={p.full_name}
+                      className="w-12 h-12 rounded-full object-cover border border-[#2a3441]"
+                      onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-full bg-[#1f2733] flex items-center justify-center text-lg">
+                      🏀
+                    </div>
+                  )}
+                  <div>
+                    <p className="font-bold">{p.full_name}</p>
+                    <p className="text-xs text-gray-400">{p.position}</p>
+                  </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  <span className="text-xs font-bold text-court-orange">{price} cr</span>
+                  {salaryCapEnabled && (
+                    <span className="text-xs font-bold text-court-orange">{price} cr</span>
+                  )}
                   {isSelected && (
                     <button
                       onClick={(e) => {
@@ -180,4 +203,5 @@ export default function PlayersPage() {
     </div>
   );
 }
+
 

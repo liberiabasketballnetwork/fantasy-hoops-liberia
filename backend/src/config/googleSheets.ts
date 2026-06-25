@@ -39,6 +39,7 @@ export const SHEET_NAMES = {
   FANTASY_SCORING: "Fantasy_Scoring",
   LEADERBOARD: "Leaderboard",
   SPONSORS: "Sponsors",
+  SETTINGS: "Settings",
 } as const;
 
 // Column headers per sheet, in order. Row 1 of every tab must match these exactly.
@@ -63,6 +64,7 @@ export const SHEET_HEADERS: Record<string, string[]> = {
     "average_points",
     "average_rebounds",
     "average_assists",
+    "photo_url",
     "created_at",
   ],
   [SHEET_NAMES.GAMEWEEK]: [
@@ -98,4 +100,5 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.FANTASY_SCORING]: ["score_id", "player_id", "week_id", "fantasy_points"],
   [SHEET_NAMES.LEADERBOARD]: ["leaderboard_id", "week_id", "user_id", "score", "rank"],
   [SHEET_NAMES.SPONSORS]: ["sponsor_id", "company_name", "prize", "week_id"],
+  [SHEET_NAMES.SETTINGS]: ["setting_key", "setting_value"],
 };

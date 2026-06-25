@@ -1,5 +1,5 @@
 import express from "express";
-import { getSheetData } from "../services/sheetsService";
+import { getSheetData, getSetting } from "../services/sheetsService";
 
 const router = express.Router();
 
@@ -20,6 +20,21 @@ router.get("/sponsors", async (_req, res) => {
   } catch (err) {
     console.error("Get sponsors error:", err);
     res.status(500).json({ error: "Failed to fetch sponsors" });
+  }
+});
+
+// GET /settings - public settings the frontend needs (e.g. is the salary cap on?)
+router.get("/settings", async (_req, res) => {
+  try {
+    const salaryCapEnabled = await getSetting("salary_cap_enabled", "true");
+    const budgetCap = await getSetting("budget_cap", "100");
+    res.json({
+      salary_cap_enabled: salaryCapEnabled === "true",
+      budget_cap: Number(budgetCap),
+    });
+  } catch (err) {
+    console.error("Get settings error:", err);
+    res.status(500).json({ error: "Failed to fetch settings" });
   }
 });
 

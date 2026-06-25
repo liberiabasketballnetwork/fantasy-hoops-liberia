@@ -17,6 +17,7 @@ export default function AdminPlayersPage() {
     average_points: 0,
     average_rebounds: 0,
     average_assists: 0,
+    photo_url: "",
   });
 
   async function load() {
@@ -34,7 +35,7 @@ export default function AdminPlayersPage() {
     try {
       await api.post("/admin/add-player", form);
       setMessage("✅ Player added.");
-      setForm({ ...form, full_name: "" });
+      setForm({ ...form, full_name: "", photo_url: "" });
       load();
     } catch (err: any) {
       setMessage(err?.response?.data?.error || "Failed to add player.");
@@ -95,6 +96,8 @@ export default function AdminPlayersPage() {
             onChange={(e) => setForm({ ...form, average_rebounds: Number(e.target.value) })} />
           <input type="number" className="input-field" placeholder="Avg assists" value={form.average_assists}
             onChange={(e) => setForm({ ...form, average_assists: Number(e.target.value) })} />
+          <input className="input-field md:col-span-3" placeholder="Photo URL (optional — paste a link from Google Drive, Imgur, etc.)" value={form.photo_url}
+            onChange={(e) => setForm({ ...form, photo_url: e.target.value })} />
         </div>
         <button onClick={addPlayer} className="btn-primary mt-3">Add Player</button>
       </div>
@@ -103,6 +106,7 @@ export default function AdminPlayersPage() {
         <table className="w-full text-sm">
           <thead className="bg-[#0b0f14] text-gray-400">
             <tr>
+              <th className="p-3"></th>
               <th className="text-left p-3">Name</th>
               <th className="text-left p-3">Position</th>
               <th className="text-left p-3">Price</th>
@@ -115,6 +119,19 @@ export default function AdminPlayersPage() {
           <tbody>
             {players.map((p) => (
               <tr key={p.player_id} className="border-t border-[#1f2733]">
+                <td className="p-3">
+                  {p.photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={p.photo_url}
+                      alt={p.full_name}
+                      className="w-8 h-8 rounded-full object-cover"
+                      onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
+                    />
+                  ) : (
+                    <span className="text-gray-500">🏀</span>
+                  )}
+                </td>
                 <td className="p-3">{p.full_name}</td>
                 <td className="p-3">{p.position}</td>
                 <td className="p-3">
