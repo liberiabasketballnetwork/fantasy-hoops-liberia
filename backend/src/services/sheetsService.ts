@@ -309,17 +309,30 @@ export function clearAllCache() {
 /**
  * Simple key-value settings store backed by the Settings sheet.
  * Used for things like toggling the salary cap system on/off.
+ *
+ * getSetting always reads the LAST matching row (most recently written) and
+ * setSetting always removes ALL existing rows for a key before appending a
+ * single fresh one. This makes the store self-healing against any duplicate
+ * rows and avoids any ambiguity between "first match" and "last match" reads.
  */
 export async function getSetting(key: string, fallback: string = ""): Promise<string> {
-  const row = await findRowByField("Settings", "setting_key", key);
-  return row ? String(row.setting_value) : fallback;
+  const rows = await getSheetData("Settings", false); // never use cache for settings
+  const matches = rows.filter((r) => String(r.setting_key).toLowerCase() === key.toLowerCase());
+  if (matches.length === 0) return fallback;
+  return String(matches[matches.length - 1].setting_value);
 }
 
 export async function setSetting(key: string, value: string): Promise<void> {
-  const existing = await findRowByField("Settings", "setting_key", key);
-  if (existing) {
-    await updateRow("Settings", "setting_key", key, { setting_value: value });
-  } else {
-    await appendRow("Settings", { setting_key: key, setting_value: value });
+  // Remove every existing row for this key first (handles any duplicates
+  // cleanly), then write a single fresh row with the new value.
+  let rows = await getSheetData("Settings", false);
+  let matches = rows.filter((r) => String(r.setting_key).toLowerCase() === key.toLowerCase());
+
+  while (matches.length > 0) {
+    await deleteRow("Settings", "setting_key", key);
+    rows = await getSheetData("Settings", false);
+    matches = rows.filter((r) => String(r.setting_key).toLowerCase() === key.toLowerCase());
   }
+
+  await appendRow("Settings", { setting_key: key, setting_value: value });
 }

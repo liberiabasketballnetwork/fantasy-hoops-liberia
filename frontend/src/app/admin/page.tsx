@@ -94,7 +94,11 @@ export default function AdminDashboard() {
     setSettings({ ...settings, salary_cap_enabled: newValue });
     try {
       await api.post("/admin/settings", { salary_cap_enabled: newValue });
-      setMessage(`✅ Salary cap ${newValue ? "enabled" : "disabled"}.`);
+      // Re-fetch from the server to confirm what was actually saved, rather
+      // than trusting the optimistic UI update.
+      const confirmRes = await api.get("/admin/settings");
+      setSettings(confirmRes.data);
+      setMessage(`✅ Salary cap ${confirmRes.data.salary_cap_enabled ? "enabled" : "disabled"}.`);
     } catch (err: any) {
       setSettings({ ...settings, salary_cap_enabled: !newValue });
       setMessage(err?.response?.data?.error || "Failed to update setting.");
@@ -105,6 +109,8 @@ export default function AdminDashboard() {
     setSettings({ ...settings, budget_cap: value });
     try {
       await api.post("/admin/settings", { budget_cap: value });
+      const confirmRes = await api.get("/admin/settings");
+      setSettings(confirmRes.data);
     } catch (err: any) {
       setMessage(err?.response?.data?.error || "Failed to update budget.");
     }
