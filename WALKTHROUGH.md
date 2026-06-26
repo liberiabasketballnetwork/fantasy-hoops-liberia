@@ -156,6 +156,37 @@ roughly 1–2 hours the first time. Everything used is **100% free**.
 
 ---
 
+## PART 6 — (Optional) Turn on rotating AdSense banner ads
+
+If you have an active Google AdSense account, you can show a rotating ad banner near the
+bottom of every page. This is fully optional and completely inactive unless you set it up.
+
+1. In your AdSense dashboard, create one or more **Display ad units** and copy each one's
+   **ad slot ID** (a number, e.g. `1234567890`). Also grab your **Publisher ID**
+   (looks like `ca-pub-1234567890123456`).
+2. On Render, go to your **frontend** service → Environment, and add:
+
+   | Variable | Value |
+   |---|---|
+   | `NEXT_PUBLIC_ADSENSE_CLIENT` | your publisher ID, e.g. `ca-pub-1234567890123456` |
+   | `NEXT_PUBLIC_ADSENSE_SLOTS` | one or more ad slot IDs, comma-separated, e.g. `1234567890,9876543210` |
+
+3. Update `frontend/public/ads.txt` in your code — replace `pub-YOUR_PUBLISHER_ID` with
+   your real publisher ID (just the numbers, no `ca-` prefix) — and push that change.
+   This file is required by AdSense to verify you're authorized to show ads on this domain.
+4. Save the environment variables — this triggers a redeploy. Once live, a single ad banner
+   will appear near the bottom of every page, and if you provided more than one slot ID it
+   will automatically rotate between them every 20 seconds.
+5. If you ever want to turn ads off again, just delete the `NEXT_PUBLIC_ADSENSE_CLIENT`
+   variable — the ad script won't load at all, so there's zero performance impact when unset.
+
+**A note on low-bandwidth users:** AdSense scripts are relatively heavy, and this app's whole
+design goal is staying fast on low-bandwidth connections. Consider waiting until you have
+real traffic to apply real value to before enabling this, and keep an eye on whether the
+banner noticeably slows page loads for your users after turning it on.
+
+---
+
 ## Notes on staying 100% free
 
 - Render's free web services "sleep" after 15 minutes of no traffic and take ~30–50

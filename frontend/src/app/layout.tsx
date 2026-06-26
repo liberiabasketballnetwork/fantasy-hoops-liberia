@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
+import AdBanner from "@/components/AdBanner";
 
 export const metadata: Metadata = {
   title: "Fantasy Hoops Liberia",
@@ -22,6 +23,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <AuthProvider>
           <Navbar />
           <main className="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]">{children}</main>
+          <AdBanner />
           <footer className="text-center text-xs text-gray-500 py-6 border-t border-[#1f2733]">
             🇱🇷 Built for Liberian basketball fans — Fantasy Hoops Liberia © {new Date().getFullYear()}
           </footer>
