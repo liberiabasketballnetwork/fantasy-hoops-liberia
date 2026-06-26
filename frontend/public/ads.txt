@@ -1,4 +1,4 @@
 # Replace YOUR_PUBLISHER_ID with your actual AdSense publisher ID
 # (the numeric part of your ca-pub-XXXXXXXXXXXXXXXX client ID, without "ca-pub-")
 # Example: google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0
-google.com, pub-YOUR_PUBLISHER_ID, DIRECT, f08c47fec0942fa0
+google.com, pub-6796281957363359, DIRECT, f08c47fec0942fa0
