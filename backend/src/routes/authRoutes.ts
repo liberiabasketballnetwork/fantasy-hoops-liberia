@@ -24,27 +24,33 @@ router.post("/register", async (req, res) => {
     }
 
     const password_hash = await bcrypt.hash(parsed.password, 10);
-    const user = {
-      user_id: uuidv4(),
+    const user_id = uuidv4();
+    const email = (parsed.email || "").toLowerCase();
+
+    await appendRow("Users", {
+      user_id,
       full_name: parsed.full_name,
-      email: (parsed.email || "").toLowerCase(),
+      email,
       password_hash,
-      phone: parsed.phone,
+      // A leading apostrophe tells Google Sheets "store this as text, not a
+      // number" — Sheets strips the apostrophe itself and never stores it,
+      // so the cell ends up holding the phone number exactly as typed,
+      // leading zero included. Without this, Sheets auto-converts numeric-
+      // looking phone numbers and silently drops the leading "0".
+      phone: `'${parsed.phone}`,
       created_at: new Date().toISOString(),
       last_login: "",
-    };
-
-    await appendRow("Users", user);
+    });
 
     const token = jwt.sign(
-      { user_id: user.user_id, phone: user.phone, isAdmin: false },
+      { user_id, phone: parsed.phone, isAdmin: false },
       process.env.JWT_SECRET as string,
       { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as any }
     );
 
     res.status(201).json({
       token,
-      user: { user_id: user.user_id, full_name: user.full_name, phone: user.phone, email: user.email },
+      user: { user_id, full_name: parsed.full_name, phone: parsed.phone, email },
     });
   } catch (err: any) {
     if (err.name === "ZodError") {
