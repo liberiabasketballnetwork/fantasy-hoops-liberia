@@ -27,9 +27,36 @@ const PORT = process.env.PORT || 4000;
 
 // ---------- Security & core middleware ----------
 app.use(helmet());
+
+// Build the list of allowed origins: the configured FRONTEND_URL, its
+// "www." variant (or the non-www variant if FRONTEND_URL already has www),
+// and the original onrender.com URL as a fallback so the old link keeps
+// working too. This avoids CORS failures when a custom domain is reachable
+// both with and without "www."
+function buildAllowedOrigins(): string[] {
+  const configured = process.env.FRONTEND_URL;
+  if (!configured) return [];
+
+  const origins = new Set<string>([configured]);
+  try {
+    const url = new URL(configured);
+    if (url.hostname.startsWith("www.")) {
+      origins.add(configured.replace("www.", ""));
+    } else {
+      origins.add(configured.replace(`://${url.hostname}`, `://www.${url.hostname}`));
+    }
+  } catch {
+    // ignore malformed FRONTEND_URL, just use it as-is
+  }
+  origins.add("https://fantasy-hoops-liberia-frontend.onrender.com");
+  return Array.from(origins);
+}
+
+const allowedOrigins = buildAllowedOrigins();
+
 app.use(
   cors({
-    origin: process.env.FRONTEND_URL || "*",
+    origin: allowedOrigins.length > 0 ? allowedOrigins : "*",
     credentials: true,
   })
 );
