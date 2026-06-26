@@ -28,9 +28,15 @@ export default function ProfilePage() {
           <p className="font-bold">{user.full_name}</p>
         </div>
         <div>
-          <p className="text-gray-400">Email</p>
-          <p className="font-bold">{user.email}</p>
+          <p className="text-gray-400">Phone number</p>
+          <p className="font-bold">{user.phone || "—"}</p>
         </div>
+        {user.email && (
+          <div>
+            <p className="text-gray-400">Email</p>
+            <p className="font-bold">{user.email}</p>
+          </div>
+        )}
       </div>
       <p className="text-xs text-gray-500 mt-5">
         Editing profile details (name, phone, password reset) can be wired up to{" "}

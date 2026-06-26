@@ -9,8 +9,8 @@ import { useAuth } from "@/context/AuthContext";
 
 interface FormData {
   full_name: string;
-  email: string;
   phone: string;
+  email: string;
   password: string;
 }
 
@@ -46,11 +46,11 @@ export default function RegisterPage() {
           {errors.full_name && <p className="text-red-400 text-xs mt-1">Full name is required</p>}
         </div>
         <div>
-          <input className="input-field" type="email" placeholder="Email address" {...register("email", { required: true })} />
-          {errors.email && <p className="text-red-400 text-xs mt-1">A valid email is required</p>}
+          <input className="input-field" type="tel" placeholder="Phone number" {...register("phone", { required: true, minLength: 6 })} />
+          {errors.phone && <p className="text-red-400 text-xs mt-1">A valid phone number is required</p>}
         </div>
         <div>
-          <input className="input-field" placeholder="Phone (optional)" {...register("phone")} />
+          <input className="input-field" type="email" placeholder="Email address (optional)" {...register("email")} />
         </div>
         <div>
           <input className="input-field" type="password" placeholder="Password" {...register("password", { required: true, minLength: 6 })} />

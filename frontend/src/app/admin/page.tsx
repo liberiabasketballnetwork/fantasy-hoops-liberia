@@ -233,7 +233,7 @@ export default function AdminDashboard() {
           {users.map((u) => (
             <div key={u.user_id} className="flex justify-between border-b border-[#1f2733] py-1">
               <span>{u.full_name}</span>
-              <span className="text-gray-400">{u.email}</span>
+              <span className="text-gray-400">{u.phone || u.email || "—"}</span>
             </div>
           ))}
         </div>

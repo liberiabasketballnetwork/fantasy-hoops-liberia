@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 interface FormData {
-  email: string;
+  phone: string;
   password: string;
 }
 
@@ -39,7 +39,7 @@ export default function LoginPage() {
       <p className="text-sm text-gray-400 mb-5">Log in to manage your fantasy lineup.</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <input className="input-field" type="email" placeholder="Email address" {...register("email", { required: true })} />
+        <input className="input-field" type="tel" placeholder="Phone number" {...register("phone", { required: true })} />
         <input className="input-field" type="password" placeholder="Password" {...register("password", { required: true })} />
 
         {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -56,7 +56,7 @@ export default function LoginPage() {
         </Link>
       </p>
       <p className="text-xs text-gray-500 mt-2">
-        Admin? Log in with your admin email here — you&apos;ll be redirected automatically.
+        Admin? Use the <Link href="/admin/login" className="text-court-orange">admin login page</Link> instead.
       </p>
     </div>
   );
