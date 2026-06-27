@@ -160,11 +160,16 @@ export default function PlayersPage() {
           return (
             <div
               key={p.player_id}
-              className={`card p-4 cursor-pointer ${isSelected ? "border-court-orange" : ""} ${
-                tooExpensive ? "opacity-50" : ""
-              }`}
+              className={`card relative p-4 cursor-pointer transition-colors ${
+                isSelected ? "border-2 border-court-orange" : ""
+              } ${tooExpensive ? "opacity-50" : ""}`}
               onClick={() => toggleSelect(p.player_id)}
             >
+              {isSelected && (
+                <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-court-orange flex items-center justify-center text-white text-xs font-bold shadow">
+                  ✓
+                </div>
+              )}
               <div className="flex justify-between items-start gap-3">
                 <div className="flex items-center gap-3">
                   {p.photo_url ? (
