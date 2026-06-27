@@ -8,12 +8,27 @@ export default function AdminLeaderboardPage() {
   const { user, loading } = useRequireAdmin();
   const [week, setWeek] = useState<any>(null);
   const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [selectionStats, setSelectionStats] = useState<any[]>([]);
+  const [totalManagers, setTotalManagers] = useState(0);
   const [message, setMessage] = useState("");
 
   async function load() {
     const res = await api.get("/leaderboard");
     setWeek(res.data.week);
     setLeaderboard(res.data.leaderboard || []);
+
+    if (res.data.week) {
+      try {
+        const statsRes = await api.get("/admin/selection-stats", {
+          params: { week_id: res.data.week.week_id },
+        });
+        setSelectionStats(statsRes.data.stats || []);
+        setTotalManagers(statsRes.data.total_managers || 0);
+      } catch {
+        setSelectionStats([]);
+        setTotalManagers(0);
+      }
+    }
   }
 
   useEffect(() => {
@@ -105,6 +120,37 @@ export default function AdminLeaderboardPage() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="card p-5">
+        <h2 className="font-bold mb-1">📈 Selection Percentage</h2>
+        <p className="text-xs text-gray-400 mb-4">
+          What share of this week&apos;s {totalManagers} manager{totalManagers === 1 ? "" : "s"} picked
+          each player. Useful for spotting herd behavior and differential picks.
+        </p>
+
+        {selectionStats.length === 0 ? (
+          <p className="text-sm text-gray-500">No lineups submitted for this gameweek yet.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {selectionStats.map((s) => (
+              <div key={s.player_id}>
+                <div className="flex justify-between text-sm mb-1">
+                  <span>{s.full_name}</span>
+                  <span className="text-gray-400">
+                    Selected by {s.percentage}% of managers ({s.count}/{totalManagers})
+                  </span>
+                </div>
+                <div className="w-full h-2 bg-[#1f2733] rounded overflow-hidden">
+                  <div
+                    className="h-full bg-court-orange"
+                    style={{ width: `${s.percentage}%` }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

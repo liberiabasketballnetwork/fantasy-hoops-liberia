@@ -206,6 +206,52 @@ router.post("/input-stats", async (req, res) => {
   }
 });
 
+// ---------- Selection Percentage ----------
+// GET /admin/selection-stats?week_id=...
+// Shows what % of managers (users who submitted a lineup that week) picked
+// each player. Helps admins (and eventually users) see herd behavior -
+// e.g. "Fedolph Marshall - Selected by 63% of managers."
+router.get("/selection-stats", async (req, res) => {
+  try {
+    const weekId = req.query.week_id as string;
+    if (!weekId) return res.status(400).json({ error: "week_id is required" });
+
+    const [lineups, lineupPlayers, players] = await Promise.all([
+      getSheetData("User_Lineups"),
+      getSheetData("Lineup_Players"),
+      getSheetData("Players"),
+    ]);
+
+    const weekLineups = lineups.filter((l) => String(l.week_id) === String(weekId));
+    const totalManagers = weekLineups.length;
+    const lineupIds = new Set(weekLineups.map((l) => l.lineup_id));
+
+    const counts: Record<string, number> = {};
+    for (const lp of lineupPlayers) {
+      if (lineupIds.has(lp.lineup_id)) {
+        counts[lp.player_id] = (counts[lp.player_id] || 0) + 1;
+      }
+    }
+
+    const stats = Object.entries(counts)
+      .map(([player_id, count]) => {
+        const player = players.find((p) => p.player_id === player_id);
+        return {
+          player_id,
+          full_name: player?.full_name || "Unknown player",
+          count,
+          percentage: totalManagers > 0 ? Math.round((count / totalManagers) * 100) : 0,
+        };
+      })
+      .sort((a, b) => b.percentage - a.percentage);
+
+    res.json({ total_managers: totalManagers, stats });
+  } catch (err) {
+    console.error("Get selection stats error:", err);
+    res.status(500).json({ error: "Failed to fetch selection stats" });
+  }
+});
+
 // ---------- Scoring ----------
 router.post("/calculate-scores", async (req, res) => {
   try {
