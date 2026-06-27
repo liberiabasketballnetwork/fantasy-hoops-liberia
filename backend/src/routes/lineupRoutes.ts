@@ -57,7 +57,7 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
       (l) => String(l.user_id) === String(req.user!.user_id) && String(l.week_id) === String(parsed.week_id)
     );
     if (existing) {
-      return res.status(409).json({ error: "You have already submitted a lineup for this gameweek" });
+      return res.status(409).json({ error: "You have already submitted your lineup for this week." });
     }
 
     const lineup_id = uuidv4();
