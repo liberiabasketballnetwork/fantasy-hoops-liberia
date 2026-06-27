@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
+const MAX_PLAYERS_PER_TEAM = 2;
+
 export default function PlayersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -52,6 +54,16 @@ export default function PlayersPage() {
   }, 0);
   const remaining = budgetCap - spent;
 
+  // Count how many currently-selected players belong to each team, in real
+  // time, so we can both block a 3rd pick and show the live count in the UI.
+  const teamCounts: Record<string, number> = {};
+  for (const id of selected) {
+    const p = players.find((pl) => pl.player_id === id);
+    if (p?.team_id) {
+      teamCounts[p.team_id] = (teamCounts[p.team_id] || 0) + 1;
+    }
+  }
+
   function toggleSelect(playerId: string) {
     setMessage("");
     const player = players.find((p) => p.player_id === playerId);
@@ -69,6 +81,11 @@ export default function PlayersPage() {
         setMessage(
           `Not enough budget left. You have ${remaining} credits remaining and this player costs ${price}.`
         );
+        return;
+      }
+      const teamId = player?.team_id;
+      if (teamId && (teamCounts[teamId] || 0) >= MAX_PLAYERS_PER_TEAM) {
+        setMessage("Maximum 2 players allowed from the same team. Choose players from other teams.");
         return;
       }
       setSelected([...selected, playerId]);
@@ -90,6 +107,10 @@ export default function PlayersPage() {
     }
     if (salaryCapEnabled && spent > budgetCap) {
       setMessage("Your lineup goes over the budget cap. Remove a player first.");
+      return;
+    }
+    if (Object.values(teamCounts).some((count) => count > MAX_PLAYERS_PER_TEAM)) {
+      setMessage("Maximum 2 players allowed from the same team. Choose players from other teams.");
       return;
     }
     if (!weekId) {
@@ -120,6 +141,16 @@ export default function PlayersPage() {
         <p className="text-sm text-gray-400">
           Selected: {selected.length}/5 {captain && `· Captain selected`}
         </p>
+      </div>
+
+      <div className="card p-4">
+        <p className="text-sm font-bold mb-2">LINEUP RULES</p>
+        <ul className="text-sm text-gray-300 flex flex-col gap-1">
+          <li>✓ Pick 5 Players</li>
+          <li>✓ Maximum 2 players per team</li>
+          {salaryCapEnabled && <li>✓ Stay under {budgetCap} credits</li>}
+          <li>✓ Select 1 Captain (double points)</li>
+        </ul>
       </div>
 
       <div className="flex items-center gap-3">
@@ -157,12 +188,15 @@ export default function PlayersPage() {
           const isCaptain = captain === p.player_id;
           const price = Number(p.fantasy_price || 0);
           const tooExpensive = salaryCapEnabled && !isSelected && price > remaining;
+          const teamFull =
+            !isSelected && !!p.team_id && (teamCounts[p.team_id] || 0) >= MAX_PLAYERS_PER_TEAM;
+          const disabled = tooExpensive || teamFull;
           return (
             <div
               key={p.player_id}
               className={`card relative p-4 cursor-pointer transition-colors ${
                 isSelected ? "border-2 border-court-orange" : ""
-              } ${tooExpensive ? "opacity-50" : ""}`}
+              } ${disabled ? "opacity-50" : ""}`}
               onClick={() => toggleSelect(p.player_id)}
             >
               {isSelected && (
@@ -228,5 +262,3 @@ export default function PlayersPage() {
     </div>
   );
 }
-
-

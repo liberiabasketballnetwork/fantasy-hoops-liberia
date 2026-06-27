@@ -11,6 +11,8 @@ import {
 
 const router = express.Router();
 
+const MAX_PLAYERS_PER_TEAM = 2;
+
 const lineupSchema = z.object({
   week_id: z.string(),
   player_ids: z.array(z.string()).length(5, "You must select exactly 5 players"),
@@ -49,6 +51,20 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
           error: `Lineup exceeds the ${budgetCap}-credit budget cap (this lineup costs ${totalCost}).`,
         });
       }
+    }
+
+    // Enforce max players per team server-side too - the UI is a convenience,
+    // not the source of truth, so a direct API call can't bypass this rule.
+    const teamCounts: Record<string, number> = {};
+    for (const p of selectedPlayers) {
+      if (p.team_id) {
+        teamCounts[p.team_id] = (teamCounts[p.team_id] || 0) + 1;
+      }
+    }
+    if (Object.values(teamCounts).some((count) => count > MAX_PLAYERS_PER_TEAM)) {
+      return res.status(400).json({
+        error: "Maximum 2 players allowed from the same team. Choose players from other teams.",
+      });
     }
 
     // Prevent duplicate submissions in the same week
