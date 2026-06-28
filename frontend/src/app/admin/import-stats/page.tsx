@@ -14,6 +14,8 @@ interface ParsedRow {
   blocks: number;
   turnovers: number;
   minutes_played: number;
+  matched_player_id: string | null;
+  match_status: "Matched" | "No Match Found";
 }
 
 export default function ImportStatsPage() {
@@ -23,6 +25,7 @@ export default function ImportStatsPage() {
   const [message, setMessage] = useState("");
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [totalRows, setTotalRows] = useState(0);
+  const [matchedCount, setMatchedCount] = useState(0);
 
   async function handleUpload() {
     if (!file) {
@@ -34,6 +37,7 @@ export default function ImportStatsPage() {
     setMessage("");
     setRows([]);
     setTotalRows(0);
+    setMatchedCount(0);
 
     try {
       const formData = new FormData();
@@ -45,6 +49,7 @@ export default function ImportStatsPage() {
 
       setRows(res.data.rows || []);
       setTotalRows(res.data.total_rows || 0);
+      setMatchedCount(res.data.matched_count || 0);
       const tablesParsed = res.data.tables_parsed || 1;
       setMessage(
         `✅ Parsed ${res.data.total_rows} player row${res.data.total_rows === 1 ? "" : "s"} from ${tablesParsed} team table${tablesParsed === 1 ? "" : "s"}.`
@@ -63,8 +68,8 @@ export default function ImportStatsPage() {
       <h1 className="text-2xl font-bold">📄 Import Stats</h1>
       <p className="text-sm text-gray-400 max-w-2xl">
         Upload an HTML stats page (e.g. saved from a league stats website) and this will parse
-        out a table of player stats for you to review below. This is a preview only — nothing
-        is saved to the database yet.
+        out a table of player stats and match each name against your existing Players sheet.
+        This is a preview only — nothing is saved to the database yet.
       </p>
 
       <div className="card p-5">
@@ -85,17 +90,27 @@ export default function ImportStatsPage() {
 
       {rows.length > 0 && (
         <div className="card overflow-hidden">
-          <div className="p-4 border-b border-[#1f2733]">
-            <h2 className="font-bold">Preview — {totalRows} rows extracted</h2>
-            <p className="text-xs text-gray-400">
-              Nothing has been saved yet. This is a preview only.
-            </p>
+          <div className="p-4 border-b border-[#1f2733] flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h2 className="font-bold">Preview — {totalRows} rows extracted</h2>
+              <p className="text-xs text-gray-400">
+                Nothing has been saved yet. This is a preview only.
+              </p>
+            </div>
+            <span
+              className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                matchedCount === totalRows ? "bg-court-green" : "bg-court-orange"
+              }`}
+            >
+              {matchedCount} of {totalRows} players matched successfully
+            </span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-[#0b0f14] text-gray-400">
                 <tr>
                   <th className="text-left p-3">Player Name</th>
+                  <th className="text-left p-3">Matched Player ID</th>
                   <th className="text-left p-3">Team</th>
                   <th className="text-right p-3">PTS</th>
                   <th className="text-right p-3">REB</th>
@@ -110,6 +125,13 @@ export default function ImportStatsPage() {
                 {rows.map((row, i) => (
                   <tr key={i} className="border-t border-[#1f2733]">
                     <td className="p-3">{row.player_name}</td>
+                    <td className="p-3">
+                      {row.matched_player_id ? (
+                        <span className="text-xs text-gray-400">{row.matched_player_id}</span>
+                      ) : (
+                        <span className="text-xs font-semibold text-red-400">No Match Found</span>
+                      )}
+                    </td>
                     <td className="p-3 text-gray-400">{row.team_name || "—"}</td>
                     <td className="p-3 text-right">{row.points}</td>
                     <td className="p-3 text-right">{row.rebounds}</td>

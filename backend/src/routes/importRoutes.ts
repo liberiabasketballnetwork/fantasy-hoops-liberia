@@ -2,6 +2,7 @@ import express from "express";
 import multer from "multer";
 import * as cheerio from "cheerio";
 import { authenticate, requireAdmin } from "../middleware/auth";
+import { getSheetData } from "../services/sheetsService";
 
 const router = express.Router();
 
@@ -53,6 +54,8 @@ interface ParsedRow {
   blocks: number;
   turnovers: number;
   minutes_played: number;
+  matched_player_id: string | null;
+  match_status: "Matched" | "No Match Found";
 }
 
 /**
@@ -119,6 +122,21 @@ function mapTablesToTeamNames($: cheerio.CheerioAPI): Map<any, string> {
   return tableTeamMap;
 }
 
+/**
+ * Builds a case-insensitive lookup from a player's full_name to their
+ * player_id, so imported names like "ANTHONY S QUADRI" match an existing
+ * "Anthony S Quadri" row regardless of casing differences.
+ */
+function buildPlayerNameLookup(players: any[]): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const p of players) {
+    if (p.full_name) {
+      lookup.set(String(p.full_name).trim().toLowerCase(), p.player_id);
+    }
+  }
+  return lookup;
+}
+
 router.post("/import-stats-preview", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -138,6 +156,10 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
     }
 
     const tableTeamMap = mapTablesToTeamNames($);
+
+    // STEP 2: load all players from the Players sheet for matching.
+    const allPlayers = await getSheetData("Players");
+    const nameLookup = buildPlayerNameLookup(allPlayers);
 
     const parsedRows: ParsedRow[] = [];
     let tablesParsed = 0;
@@ -194,6 +216,9 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
         const teamFromColumn = getCell("team_name");
         const team_name = teamFromColumn || teamNameFromHeader;
 
+        // STEP 3 / STEP 4: case-insensitive exact match against Players.full_name.
+        const matchedPlayerId = nameLookup.get(player_name.trim().toLowerCase()) || null;
+
         const parsedRow: ParsedRow = {
           player_name,
           team_name,
@@ -204,6 +229,8 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
           blocks: 0,
           turnovers: 0,
           minutes_played: 0,
+          matched_player_id: matchedPlayerId,
+          match_status: matchedPlayerId ? "Matched" : "No Match Found",
         };
 
         for (const field of NUMERIC_FIELDS) {
@@ -226,8 +253,11 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
       });
     }
 
+    const matchedCount = parsedRows.filter((r) => r.matched_player_id !== null).length;
+
     res.json({
       total_rows: parsedRows.length,
+      matched_count: matchedCount,
       tables_parsed: tablesParsed,
       columns_detected: lastColumnMaps,
       rows: parsedRows,
