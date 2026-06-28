@@ -2,8 +2,9 @@ import express from "express";
 import multer from "multer";
 import * as cheerio from "cheerio";
 import { z } from "zod";
+import { v4 as uuidv4 } from "uuid";
 import { authenticate, requireAdmin } from "../middleware/auth";
-import { getSheetData, updateRow } from "../services/sheetsService";
+import { getSheetData, updateRow, appendRow } from "../services/sheetsService";
 
 const router = express.Router();
 
@@ -157,6 +158,69 @@ function buildAliasLookup(players: any[]): Map<string, string> {
     }
   }
   return lookup;
+}
+
+/**
+ * Given the raw text extracted from the filename (e.g. "FIRST DIVISION
+ * MIGHTY BARROLLE", with underscores already turned into spaces), finds the
+ * known team (from the Teams sheet) whose name matches the END of that raw
+ * text, case-insensitively. This correctly strips off unrelated prefixes
+ * like a division/league label ("FIRST DIVISION ...") because we're
+ * matching against real team names instead of guessing by word count.
+ * Falls back to the raw text itself if no known team matches.
+ */
+function resolveTeamNameFromRaw(raw: string, knownTeamNames: string[]): string {
+  const normalizedRaw = raw.replace(/\s+/g, " ").trim().toLowerCase();
+  let bestMatch: string | null = null;
+
+  for (const teamName of knownTeamNames) {
+    const normalizedTeam = teamName.replace(/\s+/g, " ").trim().toLowerCase();
+    if (normalizedRaw.endsWith(normalizedTeam)) {
+      if (!bestMatch || normalizedTeam.length > bestMatch.length) {
+        bestMatch = normalizedTeam;
+      }
+    }
+  }
+
+  if (bestMatch) {
+    // Return the team name in its original casing from the Teams sheet.
+    const original = knownTeamNames.find(
+      (t) => t.replace(/\s+/g, " ").trim().toLowerCase() === bestMatch
+    );
+    return original || raw.trim();
+  }
+
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * STEP 2: parses a stats filename like
+ *   "FIRST_DIVISION_MIGHTY_BARROLLE_vs_KNIGHT_REAPERS_20260627.html"
+ * into { home_team, away_team, game_date }. Returns nulls for anything it
+ * couldn't confidently extract.
+ */
+function parseGameInfoFromFilename(
+  filename: string,
+  knownTeamNames: string[]
+): { home_team: string | null; away_team: string | null; game_date: string | null } {
+  const base = filename.replace(/\.[a-z0-9]+$/i, ""); // strip extension
+
+  const dateMatch = base.match(/(\d{4})(\d{2})(\d{2})/);
+  const game_date = dateMatch ? `${dateMatch[1]}-${dateMatch[2]}-${dateMatch[3]}` : null;
+  const withoutDate = dateMatch ? base.replace(dateMatch[0], "") : base;
+
+  const vsMatch = withoutDate.split(/_vs_/i);
+  if (vsMatch.length !== 2) {
+    return { home_team: null, away_team: null, game_date };
+  }
+
+  const homeRaw = vsMatch[0].replace(/_/g, " ");
+  const awayRaw = vsMatch[1].replace(/_/g, " ");
+
+  const home_team = resolveTeamNameFromRaw(homeRaw, knownTeamNames) || null;
+  const away_team = resolveTeamNameFromRaw(awayRaw, knownTeamNames) || null;
+
+  return { home_team, away_team, game_date };
 }
 
 router.post("/import-stats-preview", upload.single("file"), async (req, res) => {
@@ -345,6 +409,120 @@ router.post("/confirm-match", async (req, res) => {
     }
     console.error("Confirm match error:", err);
     res.status(500).json({ error: "Failed to save manual match" });
+  }
+});
+
+const saveStatsSchema = z.object({
+  filename: z.string().min(1),
+  rows: z
+    .array(
+      z.object({
+        player_id: z.string().min(1),
+        points: z.number().default(0),
+        rebounds: z.number().default(0),
+        assists: z.number().default(0),
+        steals: z.number().default(0),
+        blocks: z.number().default(0),
+        turnovers: z.number().default(0),
+        minutes_played: z.number().default(0),
+      })
+    )
+    .min(1, "No player rows to save"),
+});
+
+/**
+ * Saves matched player stats into Player_Stats, after locating the right
+ * game from the uploaded filename. Only ever called once every row is
+ * matched (100%) - the frontend enforces this, and we double check here too.
+ */
+router.post("/import-stats-save", async (req, res) => {
+  try {
+    const { filename, rows } = saveStatsSchema.parse(req.body);
+
+    // STEP 1: require 100% matching - every row must already carry a
+    // player_id by the time it reaches this endpoint (auto-matched or
+    // manually confirmed). There's no "unmatched" concept here since the
+    // schema requires player_id on every row, but we keep this explicit
+    // check in case the frontend ever sends an incomplete set.
+    if (rows.some((r) => !r.player_id)) {
+      return res.status(400).json({
+        error: "Not all players are matched. 100% matching is required before saving.",
+      });
+    }
+
+    // STEP 2: extract home_team, away_team, game_date from the filename.
+    const teams = await getSheetData("Teams");
+    const knownTeamNames = teams.map((t) => String(t.team_name));
+    const { home_team, away_team, game_date } = parseGameInfoFromFilename(filename, knownTeamNames);
+
+    if (!home_team || !away_team || !game_date) {
+      return res.status(400).json({
+        error:
+          "Could not determine the game from the filename. Expected a format like 'HOME_TEAM_vs_AWAY_TEAM_YYYYMMDD.html'.",
+      });
+    }
+
+    // STEP 3: find the matching Games row.
+    const games = await getSheetData("Games");
+    const normalize = (s: string) => s.trim().toLowerCase();
+
+    const matchingGame = games.find((g) => {
+      const gameDate = String(g.game_date).slice(0, 10); // tolerate datetime strings too
+      return (
+        normalize(String(g.home_team)) === normalize(home_team) &&
+        normalize(String(g.away_team)) === normalize(away_team) &&
+        gameDate === game_date
+      );
+    });
+
+    if (!matchingGame) {
+      return res.status(404).json({
+        error: `No matching game found for ${home_team} vs ${away_team} on ${game_date}. Add this game first in the admin panel.`,
+      });
+    }
+
+    const game_id = matchingGame.game_id;
+
+    // STEP 7: prevent duplicate imports for the same game.
+    const existingStats = await getSheetData("Player_Stats");
+    const alreadyImported = existingStats.some((s) => String(s.game_id) === String(game_id));
+    if (alreadyImported) {
+      return res.status(409).json({
+        error: "Stats for this game already imported. Do not import again.",
+      });
+    }
+
+    // STEP 4/5: insert one Player_Stats row per matched player.
+    for (const row of rows) {
+      await appendRow("Player_Stats", {
+        stat_id: uuidv4(),
+        game_id,
+        player_id: row.player_id,
+        points: row.points,
+        rebounds: row.rebounds,
+        assists: row.assists,
+        steals: row.steals,
+        blocks: row.blocks,
+        turnovers: row.turnovers,
+        minutes_played: row.minutes_played,
+      });
+    }
+
+    // STEP 6: mark the game as completed.
+    await updateRow("Games", "game_id", game_id, { status: "completed" });
+
+    // STEP 8: success message.
+    res.json({
+      message: `Successfully saved ${rows.length} player stats.`,
+      game_id,
+      saved_count: rows.length,
+    });
+  } catch (err: any) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid input", details: err.errors });
+    }
+    console.error("Import stats save error:", err);
+    res.status(500).json({ error: "Failed to save player stats" });
   }
 });
 

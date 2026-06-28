@@ -21,7 +21,10 @@ interface ParsedRow {
 export default function ImportStatsPage() {
   const { user, loading } = useRequireAdmin();
   const [file, setFile] = useState<File | null>(null);
+  const [uploadedFilename, setUploadedFilename] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveResult, setSaveResult] = useState<{ success: boolean; text: string } | null>(null);
   const [message, setMessage] = useState("");
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [totalRows, setTotalRows] = useState(0);
@@ -43,6 +46,7 @@ export default function ImportStatsPage() {
 
     setUploading(true);
     setMessage("");
+    setSaveResult(null);
     setRows([]);
     setTotalRows(0);
     setMatchedCount(0);
@@ -60,6 +64,7 @@ export default function ImportStatsPage() {
       setRows(res.data.rows || []);
       setTotalRows(res.data.total_rows || 0);
       setMatchedCount(res.data.matched_count || 0);
+      setUploadedFilename(file.name);
       const tablesParsed = res.data.tables_parsed || 1;
       setMessage(
         `✅ Parsed ${res.data.total_rows} player row${res.data.total_rows === 1 ? "" : "s"} from ${tablesParsed} team table${tablesParsed === 1 ? "" : "s"}.`
@@ -103,6 +108,38 @@ export default function ImportStatsPage() {
   const needsManualReview = rows.filter(
     (r) => r.match_status === "Manual Match Required" && !confirmedNames.has(r.player_name)
   );
+
+  const fullyMatched = rows.length > 0 && matchedCount === totalRows && needsManualReview.length === 0;
+
+  async function saveStats() {
+    if (!fullyMatched) return;
+
+    setSaving(true);
+    setSaveResult(null);
+    try {
+      const res = await api.post("/admin/import-stats-save", {
+        filename: uploadedFilename,
+        rows: rows.map((r) => ({
+          player_id: r.matched_player_id,
+          points: r.points,
+          rebounds: r.rebounds,
+          assists: r.assists,
+          steals: r.steals,
+          blocks: r.blocks,
+          turnovers: r.turnovers,
+          minutes_played: r.minutes_played,
+        })),
+      });
+      setSaveResult({ success: true, text: `✅ ${res.data.message}` });
+    } catch (err: any) {
+      setSaveResult({
+        success: false,
+        text: err?.response?.data?.error || "Failed to save player stats.",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (loading || !user) return <p className="text-center text-gray-400">Loading...</p>;
 
@@ -191,17 +228,33 @@ export default function ImportStatsPage() {
             <div>
               <h2 className="font-bold">Preview — {totalRows} rows extracted</h2>
               <p className="text-xs text-gray-400">
-                Nothing has been saved yet. This is a preview only.
+                {fullyMatched
+                  ? "All players matched. Ready to save."
+                  : "Nothing has been saved yet. This is a preview only."}
               </p>
             </div>
-            <span
-              className={`px-3 py-1 rounded-lg text-sm font-semibold ${
-                matchedCount === totalRows ? "bg-court-green" : "bg-court-orange"
-              }`}
-            >
-              {matchedCount} of {totalRows} players matched successfully
-            </span>
+            <div className="flex items-center gap-3">
+              <span
+                className={`px-3 py-1 rounded-lg text-sm font-semibold ${
+                  matchedCount === totalRows ? "bg-court-green" : "bg-court-orange"
+                }`}
+              >
+                {matchedCount} of {totalRows} players matched successfully
+              </span>
+              <button
+                onClick={saveStats}
+                disabled={!fullyMatched || saving}
+                className="btn-primary text-sm"
+              >
+                {saving ? "Saving..." : "Save Stats"}
+              </button>
+            </div>
           </div>
+          {saveResult && (
+            <div className={`p-3 text-sm ${saveResult.success ? "text-court-green" : "text-red-400"}`}>
+              {saveResult.text}
+            </div>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="bg-[#0b0f14] text-gray-400">
