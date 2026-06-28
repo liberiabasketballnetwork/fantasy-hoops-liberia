@@ -526,4 +526,52 @@ router.post("/import-stats-save", async (req, res) => {
   }
 });
 
+const quickAddPlayerSchema = z.object({
+  full_name: z.string().min(1),
+  team_id: z.string().min(1),
+  position: z.enum(["PG", "SG", "SF", "PF", "C"]),
+  fantasy_price: z.number().optional().default(6),
+  status: z.string().optional().default("active"),
+  import_alias: z.string().min(1), // the imported name that triggered this, e.g. "RICHARD WEAH CLARKE III"
+});
+
+/**
+ * Used from the Manual Review panel when an imported player genuinely
+ * doesn't exist in the Players sheet yet (e.g. "RICHARD WEAH CLARKE III").
+ * Creates the new player, immediately saves the imported name as their
+ * import_alias (STEP 5), so the row this came from can be marked Matched
+ * right away (STEP 6) without needing a second import to pick up the alias.
+ */
+router.post("/quick-add-player", async (req, res) => {
+  try {
+    const data = quickAddPlayerSchema.parse(req.body);
+
+    const player_id = uuidv4();
+    const player = {
+      player_id,
+      full_name: data.full_name,
+      team_id: data.team_id,
+      position: data.position,
+      fantasy_price: data.fantasy_price,
+      status: data.status,
+      average_points: 0,
+      average_rebounds: 0,
+      average_assists: 0,
+      photo_url: "",
+      import_alias: data.import_alias.trim(),
+      created_at: new Date().toISOString(),
+    };
+
+    await appendRow("Players", player);
+
+    res.status(201).json({ message: "Player created", player });
+  } catch (err: any) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid input", details: err.errors });
+    }
+    console.error("Quick add player error:", err);
+    res.status(500).json({ error: "Failed to create player" });
+  }
+});
+
 export default router;

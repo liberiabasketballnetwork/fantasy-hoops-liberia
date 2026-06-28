@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 
@@ -18,6 +18,16 @@ interface ParsedRow {
   match_status: "Matched" | "Manual Match Required";
 }
 
+interface NewPlayerForm {
+  full_name: string;
+  team_id: string;
+  position: string;
+  fantasy_price: number;
+  status: string;
+}
+
+const POSITIONS = ["PG", "SG", "SF", "PF", "C"];
+
 export default function ImportStatsPage() {
   const { user, loading } = useRequireAdmin();
   const [file, setFile] = useState<File | null>(null);
@@ -30,12 +40,20 @@ export default function ImportStatsPage() {
   const [totalRows, setTotalRows] = useState(0);
   const [matchedCount, setMatchedCount] = useState(0);
   const [allPlayers, setAllPlayers] = useState<any[]>([]);
+  const [allTeams, setAllTeams] = useState<any[]>([]);
   const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<string | null>(null);
   const [confirmedNames, setConfirmedNames] = useState<Set<string>>(new Set());
 
+  // Tracks which row's "Add New Player" quick form is currently open, and
+  // its in-progress field values, keyed by the imported player name.
+  const [openNewPlayerFor, setOpenNewPlayerFor] = useState<string | null>(null);
+  const [newPlayerForms, setNewPlayerForms] = useState<Record<string, NewPlayerForm>>({});
+  const [creatingPlayer, setCreatingPlayer] = useState<string | null>(null);
+
   useEffect(() => {
     api.get("/players").then((res) => setAllPlayers(res.data.players || []));
+    api.get("/teams").then((res) => setAllTeams(res.data.teams || []));
   }, []);
 
   async function handleUpload() {
@@ -52,6 +70,8 @@ export default function ImportStatsPage() {
     setMatchedCount(0);
     setManualSelections({});
     setConfirmedNames(new Set());
+    setOpenNewPlayerFor(null);
+    setNewPlayerForms({});
 
     try {
       const formData = new FormData();
@@ -102,6 +122,73 @@ export default function ImportStatsPage() {
       setMessage(err?.response?.data?.error || "Failed to save manual match.");
     } finally {
       setConfirming(null);
+    }
+  }
+
+  function openAddNewPlayerForm(row: ParsedRow) {
+    setOpenNewPlayerFor(row.player_name);
+    if (!newPlayerForms[row.player_name]) {
+      // Pre-fill with the imported name and team, as required.
+      const matchingTeam = allTeams.find(
+        (t) => t.team_name.trim().toLowerCase() === row.team_name.trim().toLowerCase()
+      );
+      setNewPlayerForms((prev) => ({
+        ...prev,
+        [row.player_name]: {
+          full_name: row.player_name,
+          team_id: matchingTeam?.team_id || "",
+          position: "PG",
+          fantasy_price: 6,
+          status: "active",
+        },
+      }));
+    }
+  }
+
+  function updateNewPlayerForm(playerName: string, updates: Partial<NewPlayerForm>) {
+    setNewPlayerForms((prev) => ({
+      ...prev,
+      [playerName]: { ...prev[playerName], ...updates },
+    }));
+  }
+
+  async function createNewPlayer(playerName: string) {
+    const form = newPlayerForms[playerName];
+    if (!form || !form.full_name || !form.team_id || !form.position) {
+      setMessage("Please fill in name, team, and position before creating the player.");
+      return;
+    }
+
+    setCreatingPlayer(playerName);
+    try {
+      const res = await api.post("/admin/quick-add-player", {
+        full_name: form.full_name,
+        team_id: form.team_id,
+        position: form.position,
+        fantasy_price: Number(form.fantasy_price),
+        status: form.status,
+        import_alias: playerName,
+      });
+
+      const newPlayer = res.data.player;
+
+      // STEP 6/7: mark this row as matched immediately and bump the counter,
+      // same as a manual confirm.
+      setRows((prev) =>
+        prev.map((r) =>
+          r.player_name === playerName
+            ? { ...r, matched_player_id: newPlayer.player_id, match_status: "Matched" }
+            : r
+        )
+      );
+      setMatchedCount((prev) => prev + 1);
+      setConfirmedNames((prev) => new Set(prev).add(playerName));
+      setAllPlayers((prev) => [...prev, newPlayer]);
+      setOpenNewPlayerFor(null);
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to create new player.");
+    } finally {
+      setCreatingPlayer(null);
     }
   }
 
@@ -172,9 +259,9 @@ export default function ImportStatsPage() {
         <div className="card p-5 border-2 border-court-orange">
           <h2 className="font-bold mb-1">🔍 Manual Review Required</h2>
           <p className="text-xs text-gray-400 mb-4">
-            These imported names couldn&apos;t be matched automatically. Pick the correct player
-            for each one and confirm — this also saves the imported name as an alias so future
-            imports match it automatically.
+            These imported names couldn&apos;t be matched automatically. Either pick the correct
+            existing player, or — if the player genuinely isn&apos;t in your Players sheet yet —
+            add them as a new player.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -187,34 +274,116 @@ export default function ImportStatsPage() {
               </thead>
               <tbody>
                 {needsManualReview.map((row) => (
-                  <tr key={row.player_name} className="border-t border-[#1f2733]">
-                    <td className="p-3">{row.player_name}</td>
-                    <td className="p-3">
-                      <select
-                        className="input-field"
-                        value={manualSelections[row.player_name] || ""}
-                        onChange={(e) =>
-                          setManualSelections({ ...manualSelections, [row.player_name]: e.target.value })
-                        }
-                      >
-                        <option value="">Select a player...</option>
-                        {allPlayers.map((p) => (
-                          <option key={p.player_id} value={p.player_id}>
-                            {p.full_name}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="p-3 text-right">
-                      <button
-                        onClick={() => confirmManualMatch(row.player_name)}
-                        disabled={!manualSelections[row.player_name] || confirming === row.player_name}
-                        className="btn-primary text-xs"
-                      >
-                        {confirming === row.player_name ? "Saving..." : "Confirm"}
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={row.player_name}>
+                    <tr key={row.player_name} className="border-t border-[#1f2733]">
+                      <td className="p-3">{row.player_name}</td>
+                      <td className="p-3">
+                        <select
+                          className="input-field"
+                          value={manualSelections[row.player_name] || ""}
+                          onChange={(e) =>
+                            setManualSelections({ ...manualSelections, [row.player_name]: e.target.value })
+                          }
+                        >
+                          <option value="">Select a player...</option>
+                          {allPlayers.map((p) => (
+                            <option key={p.player_id} value={p.player_id}>
+                              {p.full_name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td className="p-3 text-right">
+                        <div className="flex gap-2 justify-end">
+                          <button
+                            onClick={() => confirmManualMatch(row.player_name)}
+                            disabled={!manualSelections[row.player_name] || confirming === row.player_name}
+                            className="btn-primary text-xs"
+                          >
+                            {confirming === row.player_name ? "Saving..." : "Confirm"}
+                          </button>
+                          <button
+                            onClick={() =>
+                              openNewPlayerFor === row.player_name
+                                ? setOpenNewPlayerFor(null)
+                                : openAddNewPlayerForm(row)
+                            }
+                            className="px-3 py-1 rounded bg-[#1f2733] text-xs font-semibold"
+                          >
+                            {openNewPlayerFor === row.player_name ? "Cancel" : "Add New Player"}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {openNewPlayerFor === row.player_name && newPlayerForms[row.player_name] && (
+                      <tr className="border-t border-[#1f2733] bg-[#0b0f14]">
+                        <td colSpan={3} className="p-4">
+                          <p className="text-xs text-gray-400 mb-3">
+                            Quick-add &quot;{row.player_name}&quot; as a brand new player. The imported
+                            name will automatically be saved as their alias.
+                          </p>
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                            <input
+                              className="input-field"
+                              placeholder="Full name"
+                              value={newPlayerForms[row.player_name].full_name}
+                              onChange={(e) =>
+                                updateNewPlayerForm(row.player_name, { full_name: e.target.value })
+                              }
+                            />
+                            <select
+                              className="input-field"
+                              value={newPlayerForms[row.player_name].team_id}
+                              onChange={(e) =>
+                                updateNewPlayerForm(row.player_name, { team_id: e.target.value })
+                              }
+                            >
+                              <option value="">Select team</option>
+                              {allTeams.map((t) => (
+                                <option key={t.team_id} value={t.team_id}>
+                                  {t.team_name}
+                                </option>
+                              ))}
+                            </select>
+                            <select
+                              className="input-field"
+                              value={newPlayerForms[row.player_name].position}
+                              onChange={(e) =>
+                                updateNewPlayerForm(row.player_name, { position: e.target.value })
+                              }
+                            >
+                              {POSITIONS.map((p) => (
+                                <option key={p} value={p}>
+                                  {p}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="number"
+                              className="input-field"
+                              placeholder="Fantasy price"
+                              value={newPlayerForms[row.player_name].fantasy_price}
+                              onChange={(e) =>
+                                updateNewPlayerForm(row.player_name, {
+                                  fantasy_price: Number(e.target.value),
+                                })
+                              }
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-3">
+                            <span className="text-xs text-gray-400">Status: active</span>
+                            <button
+                              onClick={() => createNewPlayer(row.player_name)}
+                              disabled={creatingPlayer === row.player_name}
+                              className="btn-primary text-xs"
+                            >
+                              {creatingPlayer === row.player_name ? "Creating..." : "Create Player & Match"}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
