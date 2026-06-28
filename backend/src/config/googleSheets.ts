@@ -65,6 +65,7 @@ export const SHEET_HEADERS: Record<string, string[]> = {
     "average_rebounds",
     "average_assists",
     "photo_url",
+    "import_alias",
     "created_at",
   ],
   [SHEET_NAMES.GAMEWEEK]: [

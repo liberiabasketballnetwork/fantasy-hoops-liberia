@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 
@@ -15,7 +15,7 @@ interface ParsedRow {
   turnovers: number;
   minutes_played: number;
   matched_player_id: string | null;
-  match_status: "Matched" | "No Match Found";
+  match_status: "Matched" | "Manual Match Required";
 }
 
 export default function ImportStatsPage() {
@@ -26,6 +26,14 @@ export default function ImportStatsPage() {
   const [rows, setRows] = useState<ParsedRow[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [matchedCount, setMatchedCount] = useState(0);
+  const [allPlayers, setAllPlayers] = useState<any[]>([]);
+  const [manualSelections, setManualSelections] = useState<Record<string, string>>({});
+  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirmedNames, setConfirmedNames] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    api.get("/players").then((res) => setAllPlayers(res.data.players || []));
+  }, []);
 
   async function handleUpload() {
     if (!file) {
@@ -38,6 +46,8 @@ export default function ImportStatsPage() {
     setRows([]);
     setTotalRows(0);
     setMatchedCount(0);
+    setManualSelections({});
+    setConfirmedNames(new Set());
 
     try {
       const formData = new FormData();
@@ -60,6 +70,39 @@ export default function ImportStatsPage() {
       setUploading(false);
     }
   }
+
+  async function confirmManualMatch(playerName: string) {
+    const selectedPlayerId = manualSelections[playerName];
+    if (!selectedPlayerId) return;
+
+    setConfirming(playerName);
+    try {
+      await api.post("/admin/confirm-match", {
+        player_name: playerName,
+        player_id: selectedPlayerId,
+      });
+
+      // Reflect the confirmed match immediately in the preview table and
+      // success counter, without requiring a re-upload.
+      setRows((prev) =>
+        prev.map((r) =>
+          r.player_name === playerName
+            ? { ...r, matched_player_id: selectedPlayerId, match_status: "Matched" }
+            : r
+        )
+      );
+      setMatchedCount((prev) => prev + 1);
+      setConfirmedNames((prev) => new Set(prev).add(playerName));
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to save manual match.");
+    } finally {
+      setConfirming(null);
+    }
+  }
+
+  const needsManualReview = rows.filter(
+    (r) => r.match_status === "Manual Match Required" && !confirmedNames.has(r.player_name)
+  );
 
   if (loading || !user) return <p className="text-center text-gray-400">Loading...</p>;
 
@@ -87,6 +130,60 @@ export default function ImportStatsPage() {
         </div>
         {message && <p className="text-sm mt-3">{message}</p>}
       </div>
+
+      {needsManualReview.length > 0 && (
+        <div className="card p-5 border-2 border-court-orange">
+          <h2 className="font-bold mb-1">🔍 Manual Review Required</h2>
+          <p className="text-xs text-gray-400 mb-4">
+            These imported names couldn&apos;t be matched automatically. Pick the correct player
+            for each one and confirm — this also saves the imported name as an alias so future
+            imports match it automatically.
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-[#0b0f14] text-gray-400">
+                <tr>
+                  <th className="text-left p-3">Imported Name</th>
+                  <th className="text-left p-3">Select Player</th>
+                  <th className="p-3"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {needsManualReview.map((row) => (
+                  <tr key={row.player_name} className="border-t border-[#1f2733]">
+                    <td className="p-3">{row.player_name}</td>
+                    <td className="p-3">
+                      <select
+                        className="input-field"
+                        value={manualSelections[row.player_name] || ""}
+                        onChange={(e) =>
+                          setManualSelections({ ...manualSelections, [row.player_name]: e.target.value })
+                        }
+                      >
+                        <option value="">Select a player...</option>
+                        {allPlayers.map((p) => (
+                          <option key={p.player_id} value={p.player_id}>
+                            {p.full_name}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() => confirmManualMatch(row.player_name)}
+                        disabled={!manualSelections[row.player_name] || confirming === row.player_name}
+                        className="btn-primary text-xs"
+                      >
+                        {confirming === row.player_name ? "Saving..." : "Confirm"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="card overflow-hidden">
@@ -129,7 +226,9 @@ export default function ImportStatsPage() {
                       {row.matched_player_id ? (
                         <span className="text-xs text-gray-400">{row.matched_player_id}</span>
                       ) : (
-                        <span className="text-xs font-semibold text-red-400">No Match Found</span>
+                        <span className="text-xs font-semibold text-court-orange">
+                          Manual Match Required
+                        </span>
                       )}
                     </td>
                     <td className="p-3 text-gray-400">{row.team_name || "—"}</td>

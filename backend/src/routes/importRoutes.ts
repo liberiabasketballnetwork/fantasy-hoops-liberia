@@ -1,8 +1,9 @@
 import express from "express";
 import multer from "multer";
 import * as cheerio from "cheerio";
+import { z } from "zod";
 import { authenticate, requireAdmin } from "../middleware/auth";
-import { getSheetData } from "../services/sheetsService";
+import { getSheetData, updateRow } from "../services/sheetsService";
 
 const router = express.Router();
 
@@ -55,7 +56,7 @@ interface ParsedRow {
   turnovers: number;
   minutes_played: number;
   matched_player_id: string | null;
-  match_status: "Matched" | "No Match Found";
+  match_status: "Matched" | "Manual Match Required";
 }
 
 /**
@@ -137,6 +138,27 @@ function buildPlayerNameLookup(players: any[]): Map<string, string> {
   return lookup;
 }
 
+/**
+ * Builds a case-insensitive lookup from each saved import alias to its
+ * player_id. A player's import_alias cell can hold multiple aliases
+ * separated by "|" (accumulated over time as different admins confirm
+ * different spellings/formats for the same player), e.g.:
+ *   "ISAAC CHUKUEBUKA ANOSIKE|I. ANOSIKE"
+ */
+function buildAliasLookup(players: any[]): Map<string, string> {
+  const lookup = new Map<string, string>();
+  for (const p of players) {
+    if (p.import_alias) {
+      const aliases = String(p.import_alias).split("|");
+      for (const alias of aliases) {
+        const trimmed = alias.trim().toLowerCase();
+        if (trimmed) lookup.set(trimmed, p.player_id);
+      }
+    }
+  }
+  return lookup;
+}
+
 router.post("/import-stats-preview", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -160,6 +182,7 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
     // STEP 2: load all players from the Players sheet for matching.
     const allPlayers = await getSheetData("Players");
     const nameLookup = buildPlayerNameLookup(allPlayers);
+    const aliasLookup = buildAliasLookup(allPlayers);
 
     const parsedRows: ParsedRow[] = [];
     let tablesParsed = 0;
@@ -216,8 +239,14 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
         const teamFromColumn = getCell("team_name");
         const team_name = teamFromColumn || teamNameFromHeader;
 
-        // STEP 3 / STEP 4: case-insensitive exact match against Players.full_name.
-        const matchedPlayerId = nameLookup.get(player_name.trim().toLowerCase()) || null;
+        // STEP 2/3: case-insensitive exact match against Players.full_name first.
+        const normalizedImportedName = player_name.trim().toLowerCase();
+        let matchedPlayerId = nameLookup.get(normalizedImportedName) || null;
+
+        // STEP 3: if full_name match fails, fall back to checking saved aliases.
+        if (!matchedPlayerId) {
+          matchedPlayerId = aliasLookup.get(normalizedImportedName) || null;
+        }
 
         const parsedRow: ParsedRow = {
           player_name,
@@ -230,7 +259,8 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
           turnovers: 0,
           minutes_played: 0,
           matched_player_id: matchedPlayerId,
-          match_status: matchedPlayerId ? "Matched" : "No Match Found",
+          // STEP 4: show "Manual Match Required" instead of "No Match Found".
+          match_status: matchedPlayerId ? "Matched" : "Manual Match Required",
         };
 
         for (const field of NUMERIC_FIELDS) {
@@ -265,6 +295,56 @@ router.post("/import-stats-preview", upload.single("file"), async (req, res) => 
   } catch (err) {
     console.error("Import stats preview error:", err);
     res.status(500).json({ error: "Failed to parse the uploaded HTML file" });
+  }
+});
+
+const confirmMatchSchema = z.object({
+  player_name: z.string().min(1), // the imported name from the HTML file
+  player_id: z.string().min(1), // the player the admin manually matched it to
+});
+
+/**
+ * STEP 6/7: Admin manually selects the correct player for an imported name
+ * that couldn't be auto-matched, and this saves that imported name as a new
+ * alias on the chosen player so future imports match it automatically
+ * (STEP 8). Does not touch Player_Stats - matching only.
+ */
+router.post("/confirm-match", async (req, res) => {
+  try {
+    const { player_name, player_id } = confirmMatchSchema.parse(req.body);
+
+    const players = await getSheetData("Players");
+    const player = players.find((p) => p.player_id === player_id);
+    if (!player) {
+      return res.status(404).json({ error: "Selected player not found" });
+    }
+
+    const existingAliases = player.import_alias
+      ? String(player.import_alias)
+          .split("|")
+          .map((a) => a.trim())
+          .filter(Boolean)
+      : [];
+
+    const alreadySaved = existingAliases.some(
+      (a) => a.toLowerCase() === player_name.trim().toLowerCase()
+    );
+
+    const updatedAliases = alreadySaved
+      ? existingAliases
+      : [...existingAliases, player_name.trim()];
+
+    const updated = await updateRow("Players", "player_id", player_id, {
+      import_alias: updatedAliases.join("|"),
+    });
+
+    res.json({ message: "Alias saved", player: updated });
+  } catch (err: any) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid input", details: err.errors });
+    }
+    console.error("Confirm match error:", err);
+    res.status(500).json({ error: "Failed to save manual match" });
   }
 });
 
