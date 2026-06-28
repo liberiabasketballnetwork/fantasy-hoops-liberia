@@ -131,6 +131,10 @@ export default function AdminDashboard() {
           <p className="font-bold">📈 Input Stats</p>
           <p className="text-xs text-gray-400">Enter game stats & games</p>
         </Link>
+        <Link href="/admin/import-stats" className="card p-4 hover:border-court-orange">
+          <p className="font-bold">📄 Import Stats</p>
+          <p className="text-xs text-gray-400">Upload an HTML stats file and preview parsed data</p>
+        </Link>
         <Link href="/admin/leaderboard" className="card p-4 hover:border-court-orange">
           <p className="font-bold">🏆 Leaderboard Tools</p>
           <p className="text-xs text-gray-400">Calculate scores, lock/reset weeks</p>
