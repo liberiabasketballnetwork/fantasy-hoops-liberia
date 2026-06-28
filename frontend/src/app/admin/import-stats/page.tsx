@@ -45,7 +45,10 @@ export default function ImportStatsPage() {
 
       setRows(res.data.rows || []);
       setTotalRows(res.data.total_rows || 0);
-      setMessage(`✅ Parsed ${res.data.total_rows} player row${res.data.total_rows === 1 ? "" : "s"} from the file.`);
+      const tablesParsed = res.data.tables_parsed || 1;
+      setMessage(
+        `✅ Parsed ${res.data.total_rows} player row${res.data.total_rows === 1 ? "" : "s"} from ${tablesParsed} team table${tablesParsed === 1 ? "" : "s"}.`
+      );
     } catch (err: any) {
       setMessage(err?.response?.data?.error || "Failed to parse the uploaded file.");
     } finally {
