@@ -412,6 +412,51 @@ router.post("/confirm-match", async (req, res) => {
   }
 });
 
+/**
+ * STEP 5/6: per-game fantasy score for a single player's stat line, used
+ * specifically for the imported Player_Stats.fantasy_points value. This is
+ * a different formula than the weekly captain-based lineup scoring engine
+ * (scoringEngine.ts) - that one is untouched by this feature.
+ *
+ * Formula: points*1 + rebounds*1.2 + assists*1.5 + steals*3 + blocks*3 - turnovers*1
+ * Bonus: +5 if 10+ in three or more of [points, rebounds, assists, steals,
+ * blocks] (triple-double), else +3 if 10+ in exactly two of them
+ * (double-double). Triple-double overrides double-double - never both.
+ */
+function calculateImportFantasyScore(stat: {
+  points: number;
+  rebounds: number;
+  assists: number;
+  steals: number;
+  blocks: number;
+  turnovers: number;
+}): number {
+  const base =
+    stat.points * 1 +
+    stat.rebounds * 1.2 +
+    stat.assists * 1.5 +
+    stat.steals * 3 +
+    stat.blocks * 3 -
+    stat.turnovers * 1;
+
+  const categoriesInDoubleDigits = [
+    stat.points,
+    stat.rebounds,
+    stat.assists,
+    stat.steals,
+    stat.blocks,
+  ].filter((v) => v >= 10).length;
+
+  let bonus = 0;
+  if (categoriesInDoubleDigits >= 3) {
+    bonus = 5; // triple-double
+  } else if (categoriesInDoubleDigits >= 2) {
+    bonus = 3; // double-double
+  }
+
+  return base + bonus;
+}
+
 const saveStatsSchema = z.object({
   filename: z.string().min(1),
   rows: z
@@ -483,17 +528,26 @@ router.post("/import-stats-save", async (req, res) => {
 
     const game_id = matchingGame.game_id;
 
-    // STEP 7: prevent duplicate imports for the same game.
-    const existingStats = await getSheetData("Player_Stats");
-    const alreadyImported = existingStats.some((s) => String(s.game_id) === String(game_id));
+    // STEP 4: check Import_Log for this file/game having already been
+    // imported successfully, instead of just inferring it from Player_Stats.
+    const importLog = await getSheetData("Import_Log");
+    const alreadyImported = importLog.some(
+      (entry) =>
+        String(entry.status).toLowerCase() === "success" &&
+        (String(entry.game_id) === String(game_id) ||
+          normalize(String(entry.file_name)) === normalize(filename))
+    );
     if (alreadyImported) {
       return res.status(409).json({
-        error: "Stats for this game already imported. Do not import again.",
+        error: "This game has already been imported.",
       });
     }
 
-    // STEP 4/5: insert one Player_Stats row per matched player.
+    // STEP 5/6: calculate fantasy score (with double/triple-double bonus)
+    // for each player, then STEP 7: insert one Player_Stats row per player.
     for (const row of rows) {
+      const fantasy_points = calculateImportFantasyScore(row);
+
       await appendRow("Player_Stats", {
         stat_id: uuidv4(),
         game_id,
@@ -505,13 +559,46 @@ router.post("/import-stats-save", async (req, res) => {
         blocks: row.blocks,
         turnovers: row.turnovers,
         minutes_played: row.minutes_played,
+        fantasy_points: fantasy_points.toFixed(2),
       });
     }
 
-    // STEP 6: mark the game as completed.
+    // STEP 8: update each player's games_played and running averages for
+    // points/rebounds/assists.
+    const allPlayers = await getSheetData("Players");
+    for (const row of rows) {
+      const player = allPlayers.find((p) => p.player_id === row.player_id);
+      if (!player) continue;
+
+      const previousGamesPlayed = Number(player.games_played || 0);
+      const newGamesPlayed = previousGamesPlayed + 1;
+
+      const runningAverage = (previousAverage: any, newValue: number) => {
+        const prevAvg = Number(previousAverage || 0);
+        return ((prevAvg * previousGamesPlayed + newValue) / newGamesPlayed).toFixed(2);
+      };
+
+      await updateRow("Players", "player_id", row.player_id, {
+        games_played: newGamesPlayed,
+        average_points: runningAverage(player.average_points, row.points),
+        average_rebounds: runningAverage(player.average_rebounds, row.rebounds),
+        average_assists: runningAverage(player.average_assists, row.assists),
+      });
+    }
+
+    // STEP 9: mark the game as completed.
     await updateRow("Games", "game_id", game_id, { status: "completed" });
 
-    // STEP 8: success message.
+    // STEP 10: log this import.
+    await appendRow("Import_Log", {
+      import_id: uuidv4(),
+      file_name: filename,
+      game_id,
+      imported_at: new Date().toISOString(),
+      status: "success",
+    });
+
+    // STEP 11: success message.
     res.json({
       message: `Successfully saved ${rows.length} player stats.`,
       game_id,
@@ -554,11 +641,13 @@ router.post("/quick-add-player", async (req, res) => {
       position: data.position,
       fantasy_price: data.fantasy_price,
       status: data.status,
+      games_played: 0,
       average_points: 0,
       average_rebounds: 0,
       average_assists: 0,
       photo_url: "",
       import_alias: data.import_alias.trim(),
+      source: "import",
       created_at: new Date().toISOString(),
     };
 
