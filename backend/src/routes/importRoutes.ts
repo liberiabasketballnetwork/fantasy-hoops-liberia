@@ -29,9 +29,9 @@ const FIELD_KEYWORDS: Record<string, string[]> = {
   team_name: ["team"],
   points: ["pts", "points"],
   rebounds: ["reb", "rebounds"],
-  assists: ["ast", "assists"],
-  steals: ["stl", "steals"],
-  blocks: ["blk", "blocks"],
+  assists: ["a", "ast", "assists"],
+  steals: ["s", "stl", "steals"],
+  blocks: ["b", "blk", "blocks"],
   turnovers: ["to", "tov", "turnovers"],
   minutes_played: ["min", "minutes"],
 };
@@ -63,6 +63,15 @@ interface ParsedRow {
 /**
  * Given a table's header cell texts, figure out which column index maps to
  * each canonical field. Returns null for fields it couldn't confidently find.
+ *
+ * Short keywords (3 characters or fewer, e.g. "a", "s", "b", "to", "pts")
+ * must match a header cell EXACTLY - they are never matched as a substring.
+ * This matters because official box-score templates often use single-letter
+ * headers like "A" (assists), "S" (steals), "B" (blocks): if we allowed
+ * substring matching for these, "A" would incorrectly match inside "FTA" or
+ * "3PA", "B" inside nothing here but could elsewhere, etc. Longer keywords
+ * (e.g. "rebounds", "assists") still allow substring matching, since those
+ * are unambiguous and helps match more verbose/varied header text.
  */
 function detectColumnMap(headerCells: string[]): Record<string, number | null> {
   const normalized = headerCells.map((h) => h.toLowerCase().trim());
@@ -74,7 +83,10 @@ function detectColumnMap(headerCells: string[]): Record<string, number | null> {
 
     for (let i = 0; i < normalized.length; i++) {
       const cell = normalized[i];
-      if (keywords.some((kw) => cell === kw || cell.includes(kw))) {
+      const isMatch = keywords.some((kw) =>
+        kw.length <= 3 ? cell === kw : cell === kw || cell.includes(kw)
+      );
+      if (isMatch) {
         foundIndex = i;
         break;
       }
