@@ -223,6 +223,17 @@ function parseGameInfoFromFilename(
   return { home_team, away_team, game_date };
 }
 
+/**
+ * Normalizes a team name for comparison purposes: trims surrounding
+ * whitespace, collapses multiple internal spaces into one, and lowercases
+ * everything. This makes "MIGHTY   BARROLLE " match "Mighty Barrolle"
+ * during game lookup, regardless of casing or stray whitespace differences
+ * between the imported filename and what's stored in the Games sheet.
+ */
+function normalizeTeamName(name: string): string {
+  return name.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 router.post("/import-stats-preview", upload.single("file"), async (req, res) => {
   try {
     if (!req.file) {
@@ -507,15 +518,16 @@ router.post("/import-stats-save", async (req, res) => {
       });
     }
 
-    // STEP 3: find the matching Games row.
+    // STEP 3: find the matching Games row, using normalized team names so
+    // casing/whitespace differences between the filename and the sheet
+    // (e.g. "MIGHTY BARROLLE" vs "Mighty Barrolle") don't break the match.
     const games = await getSheetData("Games");
-    const normalize = (s: string) => s.trim().toLowerCase();
 
     const matchingGame = games.find((g) => {
       const gameDate = String(g.game_date).slice(0, 10); // tolerate datetime strings too
       return (
-        normalize(String(g.home_team)) === normalize(home_team) &&
-        normalize(String(g.away_team)) === normalize(away_team) &&
+        normalizeTeamName(String(g.home_team)) === normalizeTeamName(home_team) &&
+        normalizeTeamName(String(g.away_team)) === normalizeTeamName(away_team) &&
         gameDate === game_date
       );
     });
@@ -535,7 +547,7 @@ router.post("/import-stats-save", async (req, res) => {
       (entry) =>
         String(entry.status).toLowerCase() === "success" &&
         (String(entry.game_id) === String(game_id) ||
-          normalize(String(entry.file_name)) === normalize(filename))
+          normalizeTeamName(String(entry.file_name)) === normalizeTeamName(filename))
     );
     if (alreadyImported) {
       return res.status(409).json({
