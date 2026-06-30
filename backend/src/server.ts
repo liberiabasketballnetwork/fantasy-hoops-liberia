@@ -21,6 +21,7 @@ import adminRoutes from "./routes/adminRoutes";
 import miscRoutes from "./routes/miscRoutes";
 import importRoutes from "./routes/importRoutes";
 import calculationBackupRoutes from "./routes/calculationBackupRoutes";
+import weeklyScoreRoutes from "./routes/weeklyScoreRoutes";
 
 dotenv.config();
 
@@ -86,6 +87,7 @@ app.use("/leaderboard", leaderboardRoutes); // /leaderboard, /leaderboard/week/:
 app.use("/admin", adminRoutes); // all /admin/* routes
 app.use("/admin", importRoutes); // /admin/import-stats-preview
 app.use("/admin", calculationBackupRoutes); // /admin/calculation-backup/*
+app.use("/admin", weeklyScoreRoutes); // /admin/calculate-weekly-scores
 app.use("/", miscRoutes); // /teams, /sponsors
 
 // ---------- 404 ----------

@@ -78,6 +78,7 @@ export const SHEET_HEADERS: Record<string, string[]> = {
     "end_date",
     "submission_deadline",
     "is_locked",
+    "scores_calculated",
     "created_at",
   ],
   [SHEET_NAMES.USER_LINEUPS]: [

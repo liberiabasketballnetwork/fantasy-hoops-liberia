@@ -99,6 +99,25 @@ export default function AdminDashboard() {
     }
   }
 
+  // Weekly score calculation engine - new, separate from "Calculate Scores"
+  // above (which still uses the existing scoringEngine.ts). Manual trigger
+  // only, calls the new /admin/calculate-weekly-scores endpoint.
+  const [calculatingWeeklyScores, setCalculatingWeeklyScores] = useState(false);
+
+  async function calculateWeeklyScores(weekId: string) {
+    setCalculatingWeeklyScores(true);
+    setMessage("");
+    try {
+      const res = await api.post("/admin/calculate-weekly-scores", { week_id: weekId });
+      setMessage(res.data.message || "Weekly scores calculated successfully.");
+      loadAll();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to calculate weekly scores.");
+    } finally {
+      setCalculatingWeeklyScores(false);
+    }
+  }
+
   async function createTeam() {
     setMessage("");
     try {
@@ -228,6 +247,13 @@ export default function AdminDashboard() {
               </span>
               <button onClick={() => lockWeek(w.week_id)} className="px-3 py-1 rounded bg-[#1f2733] text-xs">Lock Week</button>
               <button onClick={() => calculateScores(w.week_id)} className="px-3 py-1 rounded bg-court-orange text-xs">Calculate Scores</button>
+              <button
+                onClick={() => calculateWeeklyScores(w.week_id)}
+                disabled={calculatingWeeklyScores}
+                className="px-3 py-1 rounded bg-blue-600 text-xs"
+              >
+                {calculatingWeeklyScores ? "Calculating..." : "Calculate Weekly Scores"}
+              </button>
               <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
               <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>
             </div>
