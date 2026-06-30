@@ -16,6 +16,11 @@ export default function AdminDashboard() {
   const [teamForm, setTeamForm] = useState({ team_name: "", division: "" });
   const [settings, setSettings] = useState({ salary_cap_enabled: true, budget_cap: 100 });
 
+  // Rollback protection UI state - purely additive, does not affect any
+  // existing week/score/team logic above.
+  const [rollbackWeekId, setRollbackWeekId] = useState<string | null>(null);
+  const [rollingBack, setRollingBack] = useState(false);
+
   async function loadAll() {
     try {
       const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
@@ -74,6 +79,23 @@ export default function AdminDashboard() {
       loadAll();
     } catch (err: any) {
       setMessage(err?.response?.data?.error || "Failed to reset week.");
+    }
+  }
+
+  // Rollback protection - purely additive. Does not touch score
+  // calculation, lock/reset, or any other existing week action above.
+  async function confirmRollback() {
+    if (!rollbackWeekId) return;
+    setRollingBack(true);
+    try {
+      await api.post("/admin/calculation-backup/rollback", { week_id: rollbackWeekId });
+      setMessage("Last calculation successfully rolled back.");
+      setRollbackWeekId(null);
+      loadAll();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to roll back the last calculation.");
+    } finally {
+      setRollingBack(false);
     }
   }
 
@@ -207,6 +229,7 @@ export default function AdminDashboard() {
               <button onClick={() => lockWeek(w.week_id)} className="px-3 py-1 rounded bg-[#1f2733] text-xs">Lock Week</button>
               <button onClick={() => calculateScores(w.week_id)} className="px-3 py-1 rounded bg-court-orange text-xs">Calculate Scores</button>
               <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
+              <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>
             </div>
           ))
         )}
@@ -242,6 +265,34 @@ export default function AdminDashboard() {
           ))}
         </div>
       </div>
+
+      {rollbackWeekId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="card p-6 max-w-md w-full border-2 border-red-700">
+            <h2 className="font-bold text-red-500 mb-2">⚠️ WARNING</h2>
+            <p className="text-sm text-gray-300 mb-5">
+              Are you sure you want to rollback the last score calculation? This will restore
+              the previous state.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setRollbackWeekId(null)}
+                disabled={rollingBack}
+                className="px-4 py-2 rounded-lg bg-[#1f2733] text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmRollback}
+                disabled={rollingBack}
+                className="px-4 py-2 rounded-lg bg-red-700 text-sm font-semibold"
+              >
+                {rollingBack ? "Rolling back..." : "Confirm Rollback"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

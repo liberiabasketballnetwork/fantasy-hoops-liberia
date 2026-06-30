@@ -41,6 +41,7 @@ export const SHEET_NAMES = {
   SPONSORS: "Sponsors",
   SETTINGS: "Settings",
   IMPORT_LOG: "Import_Log",
+  CALCULATION_BACKUP: "Calculation_Backup",
 } as const;
 
 // Column headers per sheet, in order. Row 1 of every tab must match these exactly.
@@ -107,4 +108,11 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.SPONSORS]: ["sponsor_id", "company_name", "prize", "week_id"],
   [SHEET_NAMES.SETTINGS]: ["setting_key", "setting_value"],
   [SHEET_NAMES.IMPORT_LOG]: ["import_id", "file_name", "game_id", "imported_at", "status"],
+  [SHEET_NAMES.CALCULATION_BACKUP]: [
+    "backup_id",
+    "week_id",
+    "backup_type",
+    "backup_data",
+    "created_at",
+  ],
 };

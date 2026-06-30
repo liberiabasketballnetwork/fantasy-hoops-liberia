@@ -20,6 +20,7 @@ import leaderboardRoutes from "./routes/leaderboardRoutes";
 import adminRoutes from "./routes/adminRoutes";
 import miscRoutes from "./routes/miscRoutes";
 import importRoutes from "./routes/importRoutes";
+import calculationBackupRoutes from "./routes/calculationBackupRoutes";
 
 dotenv.config();
 
@@ -84,6 +85,7 @@ app.use("/", lineupRoutes); // /submit-lineup, /my-lineup
 app.use("/leaderboard", leaderboardRoutes); // /leaderboard, /leaderboard/week/:id
 app.use("/admin", adminRoutes); // all /admin/* routes
 app.use("/admin", importRoutes); // /admin/import-stats-preview
+app.use("/admin", calculationBackupRoutes); // /admin/calculation-backup/*
 app.use("/", miscRoutes); // /teams, /sponsors
 
 // ---------- 404 ----------
