@@ -3,7 +3,12 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
-import { appendRow, findRowByField, updateRow } from "../services/sheetsService";
+import { appendRow, getSheetData, updateRow } from "../services/sheetsService";
+import {
+  normalizePhoneNumber,
+  formatPhoneForSheet,
+  stripApostrophe,
+} from "../utils/phoneUtils";
 
 const router = express.Router();
 
@@ -18,7 +23,17 @@ router.post("/register", async (req, res) => {
   try {
     const parsed = registerSchema.parse(req.body);
 
-    const existing = await findRowByField("Users", "phone", parsed.phone);
+    // Normalize the incoming phone number before any lookup or storage.
+    // This handles "+231881465193", "231881465193", and "0881465193" all
+    // resolving to the same canonical "0881465193" form.
+    const normalizedPhone = normalizePhoneNumber(parsed.phone);
+
+    // Duplicate-check: compare normalized input against the normalized
+    // stored value (stripping any apostrophe Sheets may have preserved).
+    const allUsers = await getSheetData("Users");
+    const existing = allUsers.find(
+      (u) => normalizePhoneNumber(stripApostrophe(String(u.phone || ""))) === normalizedPhone
+    );
     if (existing) {
       return res.status(409).json({ error: "An account with this phone number already exists." });
     }
@@ -32,25 +47,23 @@ router.post("/register", async (req, res) => {
       full_name: parsed.full_name,
       email,
       password_hash,
-      // A leading apostrophe tells Google Sheets "store this as text, not a
-      // number" — Sheets strips the apostrophe itself and never stores it,
-      // so the cell ends up holding the phone number exactly as typed,
-      // leading zero included. Without this, Sheets auto-converts numeric-
-      // looking phone numbers and silently drops the leading "0".
-      phone: `'${parsed.phone}`,
+      // formatPhoneForSheet() normalizes the number AND adds the leading
+      // apostrophe that tells Google Sheets to store it as text, preserving
+      // the leading zero. The apostrophe itself never appears in the cell.
+      phone: formatPhoneForSheet(normalizedPhone),
       created_at: new Date().toISOString(),
       last_login: "",
     });
 
     const token = jwt.sign(
-      { user_id, phone: parsed.phone, isAdmin: false },
+      { user_id, phone: normalizedPhone, isAdmin: false },
       process.env.JWT_SECRET as string,
       { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as any }
     );
 
     res.status(201).json({
       token,
-      user: { user_id, full_name: parsed.full_name, phone: parsed.phone, email },
+      user: { user_id, full_name: parsed.full_name, phone: normalizedPhone, email },
     });
   } catch (err: any) {
     if (err.name === "ZodError") {
@@ -87,14 +100,27 @@ router.post("/login", async (req, res) => {
         process.env.JWT_SECRET as string,
         { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as any }
       );
-      return res.json({ token, user: { user_id: "admin", full_name: "Admin", email: parsed.email, isAdmin: true } });
+      return res.json({
+        token,
+        user: { user_id: "admin", full_name: "Admin", email: parsed.email, isAdmin: true },
+      });
     }
 
     if (!parsed.phone) {
       return res.status(401).json({ error: "Invalid phone number or password" });
     }
 
-    const user = await findRowByField("Users", "phone", parsed.phone);
+    // Normalize the login attempt the same way we normalized at registration,
+    // so "+231881465193" and "0881465193" both find the same account.
+    const normalizedLoginPhone = normalizePhoneNumber(parsed.phone);
+
+    // Scan all users and compare normalized values, stripping any apostrophe
+    // that may exist in the stored value (from the formatPhoneForSheet step
+    // at registration, or from a manual sheet edit).
+    const allUsers = await getSheetData("Users");
+    const user = allUsers.find(
+      (u) => normalizePhoneNumber(stripApostrophe(String(u.phone || ""))) === normalizedLoginPhone
+    );
     if (!user) return res.status(401).json({ error: "Invalid phone number or password" });
 
     const valid = await bcrypt.compare(parsed.password, user.password_hash);
@@ -105,14 +131,19 @@ router.post("/login", async (req, res) => {
     });
 
     const token = jwt.sign(
-      { user_id: user.user_id, phone: user.phone, isAdmin: false },
+      { user_id: user.user_id, phone: normalizedLoginPhone, isAdmin: false },
       process.env.JWT_SECRET as string,
       { expiresIn: (process.env.JWT_EXPIRES_IN || "7d") as any }
     );
 
     res.json({
       token,
-      user: { user_id: user.user_id, full_name: user.full_name, phone: user.phone, email: user.email },
+      user: {
+        user_id: user.user_id,
+        full_name: user.full_name,
+        phone: normalizedLoginPhone,
+        email: user.email,
+      },
     });
   } catch (err: any) {
     if (err.name === "ZodError") {
