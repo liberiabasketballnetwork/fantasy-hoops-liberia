@@ -63,15 +63,6 @@ export default function AdminDashboard() {
     }
   }
 
-  async function calculateScores(weekId: string) {
-    try {
-      await api.post("/admin/calculate-scores", { week_id: weekId });
-      setMessage("📊 Scores calculated and leaderboard updated.");
-    } catch (err: any) {
-      setMessage(err?.response?.data?.error || "Failed to calculate scores.");
-    }
-  }
-
   async function resetWeek(weekId: string) {
     try {
       await api.post("/admin/reset-week", { week_id: weekId });
@@ -99,9 +90,9 @@ export default function AdminDashboard() {
     }
   }
 
-  // Weekly score calculation engine - new, separate from "Calculate Scores"
-  // above (which still uses the existing scoringEngine.ts). Manual trigger
-  // only, calls the new /admin/calculate-weekly-scores endpoint.
+  // Weekly score calculation engine - the active scoring system. The old
+  // "Calculate Scores" button/handler (scoringEngine.ts-backed) was
+  // removed during a codebase cleanup pass.
   const [calculatingWeeklyScores, setCalculatingWeeklyScores] = useState(false);
 
   async function calculateWeeklyScores(weekId: string) {
@@ -246,7 +237,6 @@ export default function AdminDashboard() {
                 {w.start_date} → {w.end_date} ({String(w.is_locked).toUpperCase() === "TRUE" ? "🔒 Locked" : "🔓 Open"})
               </span>
               <button onClick={() => lockWeek(w.week_id)} className="px-3 py-1 rounded bg-[#1f2733] text-xs">Lock Week</button>
-              <button onClick={() => calculateScores(w.week_id)} className="px-3 py-1 rounded bg-court-orange text-xs">Calculate Scores</button>
               <button
                 onClick={() => calculateWeeklyScores(w.week_id)}
                 disabled={calculatingWeeklyScores}

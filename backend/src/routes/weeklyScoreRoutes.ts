@@ -19,8 +19,9 @@ const weekIdSchema = z.object({
  * already calculated for this week, then computes cumulative weekly
  * fantasy scores per the locked gameplay rules and saves the leaderboard.
  *
- * This is a new, separate endpoint from /admin/calculate-scores (which
- * still uses scoringEngine.ts and the Fantasy_Scoring sheet, untouched).
+ * This is the active weekly scoring endpoint. The old /admin/calculate-scores
+ * route (and its scoringEngine.ts service) was removed during a codebase
+ * cleanup pass, since it was fully superseded by this engine.
  */
 router.post("/calculate-weekly-scores", async (req, res) => {
   try {

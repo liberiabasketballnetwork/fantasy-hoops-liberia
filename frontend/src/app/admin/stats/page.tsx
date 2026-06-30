@@ -104,7 +104,7 @@ export default function AdminStatsPage() {
 
       <p className="text-xs text-gray-500">
         After entering stats for all players, go to the Admin Dashboard and click
-        &quot;Calculate Scores&quot; on the active gameweek to update the leaderboard.
+        &quot;Calculate Weekly Scores&quot; on the active gameweek to update the leaderboard.
       </p>
     </div>
   );

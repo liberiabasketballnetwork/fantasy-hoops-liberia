@@ -5,10 +5,10 @@ import { createCalculationBackup } from "./calculationBackupService";
 /**
  * Weekly score calculation engine.
  *
- * This is a SEPARATE, new engine from scoringEngine.ts (which powers the
- * existing "Calculate Scores" button and Fantasy_Scoring sheet). That file
- * and its formula are not touched or used here. This engine instead
- * implements the locked gameplay rules from the spec:
+ * This is the active scoring engine for Fantasy Hoops Liberia. An older,
+ * obsolete engine (scoringEngine.ts, tied to the old "Calculate Scores"
+ * button and the Fantasy_Scoring sheet) was removed during a codebase
+ * cleanup pass. This engine implements the locked gameplay rules:
  *  - cumulative fantasy_points across all of a player's completed games
  *    within the week's date range
  *  - captain doubles their total

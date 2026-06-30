@@ -438,8 +438,10 @@ router.post("/confirm-match", async (req, res) => {
 /**
  * STEP 5/6: per-game fantasy score for a single player's stat line, used
  * specifically for the imported Player_Stats.fantasy_points value. This is
- * a different formula than the weekly captain-based lineup scoring engine
- * (scoringEngine.ts) - that one is untouched by this feature.
+ * a different, independent formula from the weekly score calculation
+ * engine (weeklyScoreCalculationService.ts) - that one sums these already-
+ * saved per-game values across a week and applies the captain bonus; it
+ * does not recompute them. This formula is untouched by other features.
  *
  * Formula: points*1 + rebounds*1.2 + assists*1.5 + steals*3 + blocks*3 - turnovers*1
  * Bonus: +5 if 10+ in three or more of [points, rebounds, assists, steals,

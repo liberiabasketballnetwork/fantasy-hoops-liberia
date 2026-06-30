@@ -35,18 +35,6 @@ export default function AdminLeaderboardPage() {
     if (user?.isAdmin) load();
   }, [user]);
 
-  async function calculateScores() {
-    if (!week) return;
-    setMessage("");
-    try {
-      await api.post("/admin/calculate-scores", { week_id: week.week_id });
-      setMessage("📊 Scores calculated.");
-      load();
-    } catch (err: any) {
-      setMessage(err?.response?.data?.error || "Failed to calculate scores.");
-    }
-  }
-
   async function lockWeek() {
     if (!week) return;
     try {
@@ -84,9 +72,6 @@ export default function AdminLeaderboardPage() {
             Week: {week.start_date} → {week.end_date} (
             {String(week.is_locked).toUpperCase() === "TRUE" ? "🔒 Locked" : "🔓 Open"})
           </span>
-          <button onClick={calculateScores} className="px-3 py-1 rounded bg-court-orange text-xs">
-            Calculate Scores
-          </button>
           <button onClick={lockWeek} className="px-3 py-1 rounded bg-[#1f2733] text-xs">
             Lock Week
           </button>

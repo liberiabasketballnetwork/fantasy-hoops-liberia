@@ -12,7 +12,6 @@ import {
   getSetting,
   setSetting,
 } from "../services/sheetsService";
-import { calculateScoresForWeek } from "../services/scoringEngine";
 
 const router = express.Router();
 
@@ -249,19 +248,6 @@ router.get("/selection-stats", async (req, res) => {
   } catch (err) {
     console.error("Get selection stats error:", err);
     res.status(500).json({ error: "Failed to fetch selection stats" });
-  }
-});
-
-// ---------- Scoring ----------
-router.post("/calculate-scores", async (req, res) => {
-  try {
-    const { week_id } = req.body;
-    if (!week_id) return res.status(400).json({ error: "week_id is required" });
-    const result = await calculateScoresForWeek(week_id);
-    res.json({ message: "Scores calculated", leaderboard: result });
-  } catch (err) {
-    console.error("Calculate scores error:", err);
-    res.status(500).json({ error: "Failed to calculate scores" });
   }
 });
 
