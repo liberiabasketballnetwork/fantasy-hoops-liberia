@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import { getSheetData, appendRow, updateRow } from "./sheetsService";
 import { createCalculationBackup } from "./calculationBackupService";
+import { logAdminAction } from "./adminActionLogger";
 
 /**
  * Weekly score calculation engine.
@@ -34,7 +35,10 @@ interface LeaderboardResultRow {
   rank: number;
 }
 
-export async function calculateWeeklyScores(week_id: string): Promise<{
+export async function calculateWeeklyScores(
+  week_id: string,
+  admin_id: string = "admin"
+): Promise<{
   ranked: LeaderboardResultRow[];
   backup_id: string;
 }> {
@@ -131,6 +135,16 @@ export async function calculateWeeklyScores(week_id: string): Promise<{
 
   await updateRow("Weekly_Gameweek", "week_id", week_id, {
     scores_calculated: "TRUE",
+  });
+
+  // TASK 3: audit log.
+  await logAdminAction({
+    admin_id,
+    action_type: "CALCULATE_WEEKLY_SCORES",
+    entity_type: "WEEK",
+    entity_id: week_id,
+    details: `Weekly score calculation completed for ${ranked.length} user(s)`,
+    status: "success",
   });
 
   return { ranked, backup_id };

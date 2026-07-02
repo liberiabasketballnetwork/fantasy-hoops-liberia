@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { authenticate, requireAdmin } from "../middleware/auth";
+import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { calculateWeeklyScores, WeeklyScoreCalculationError } from "../services/weeklyScoreCalculationService";
 
 const router = express.Router();
@@ -11,22 +11,10 @@ const weekIdSchema = z.object({
   week_id: z.string().min(1),
 });
 
-/**
- * POST /admin/calculate-weekly-scores
- *
- * Manually triggered only (no automatic calculation anywhere). Backs up
- * current state first via calculationBackupService, blocks if scores were
- * already calculated for this week, then computes cumulative weekly
- * fantasy scores per the locked gameplay rules and saves the leaderboard.
- *
- * This is the active weekly scoring endpoint. The old /admin/calculate-scores
- * route (and its scoringEngine.ts service) was removed during a codebase
- * cleanup pass, since it was fully superseded by this engine.
- */
-router.post("/calculate-weekly-scores", async (req, res) => {
+router.post("/calculate-weekly-scores", async (req: AuthRequest, res) => {
   try {
     const { week_id } = weekIdSchema.parse(req.body);
-    const result = await calculateWeeklyScores(week_id);
+    const result = await calculateWeeklyScores(week_id, req.user?.user_id || "admin");
     res.json({
       message: "Weekly scores calculated successfully.",
       leaderboard: result.ranked,

@@ -42,6 +42,7 @@ export const SHEET_NAMES = {
   SETTINGS: "Settings",
   IMPORT_LOG: "Import_Log",
   CALCULATION_BACKUP: "Calculation_Backup",
+  ADMIN_ACTIONS_LOG: "Admin_Actions_Log",
 } as const;
 
 // Column headers per sheet, in order. Row 1 of every tab must match these exactly.
@@ -114,6 +115,16 @@ export const SHEET_HEADERS: Record<string, string[]> = {
     "week_id",
     "backup_type",
     "backup_data",
+    "created_at",
+  ],
+  [SHEET_NAMES.ADMIN_ACTIONS_LOG]: [
+    "action_id",
+    "admin_id",
+    "action_type",
+    "entity_type",
+    "entity_id",
+    "details",
+    "status",
     "created_at",
   ],
 };

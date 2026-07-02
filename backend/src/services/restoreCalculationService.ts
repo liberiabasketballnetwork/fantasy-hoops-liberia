@@ -1,5 +1,6 @@
 import { getSheetData, appendRow, deleteRow, updateRow } from "./sheetsService";
 import { CalculationBackupPayload } from "./calculationBackupService";
+import { logAdminAction } from "./adminActionLogger";
 
 /**
  * Restores the most recent Calculation_Backup for a given week, completely
@@ -15,7 +16,10 @@ import { CalculationBackupPayload } from "./calculationBackupService";
  * modify the HTML importer, player matching system, Player_Stats, Games,
  * Import_Log, or any auth/registration/login code.
  */
-export async function rollbackLastCalculation(week_id: string): Promise<{
+export async function rollbackLastCalculation(
+  week_id: string,
+  admin_id: string = "admin"
+): Promise<{
   backup_id: string;
   restored_leaderboard_count: number;
   restored_lineup_count: number;
@@ -84,10 +88,22 @@ export async function rollbackLastCalculation(week_id: string): Promise<{
     weeklyGameweekRestored = true;
   }
 
-  return {
+  const result = {
     backup_id: latestBackup.backup_id,
     restored_leaderboard_count: (payload.leaderboard || []).length,
     restored_lineup_count: (payload.user_lineups || []).length,
     weekly_gameweek_restored: weeklyGameweekRestored,
   };
+
+  // TASK 4: audit log.
+  await logAdminAction({
+    admin_id,
+    action_type: "ROLLBACK",
+    entity_type: "WEEK",
+    entity_id: week_id,
+    details: `Rollback executed successfully using backup ${latestBackup.backup_id}`,
+    status: "success",
+  });
+
+  return result;
 }

@@ -3,8 +3,9 @@ import multer from "multer";
 import * as cheerio from "cheerio";
 import { z } from "zod";
 import { v4 as uuidv4 } from "uuid";
-import { authenticate, requireAdmin } from "../middleware/auth";
+import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { getSheetData, updateRow, appendRow } from "../services/sheetsService";
+import { logAdminAction } from "../services/adminActionLogger";
 
 const router = express.Router();
 
@@ -505,7 +506,7 @@ const saveStatsSchema = z.object({
  * game from the uploaded filename. Only ever called once every row is
  * matched (100%) - the frontend enforces this, and we double check here too.
  */
-router.post("/import-stats-save", async (req, res) => {
+router.post("/import-stats-save", async (req: AuthRequest, res) => {
   try {
     const { filename, rows } = saveStatsSchema.parse(req.body);
 
@@ -621,6 +622,16 @@ router.post("/import-stats-save", async (req, res) => {
       file_name: filename,
       game_id,
       imported_at: new Date().toISOString(),
+      status: "success",
+    });
+
+    // TASK 2: audit log.
+    await logAdminAction({
+      admin_id: req.user?.user_id || "admin",
+      action_type: "IMPORT_STATS",
+      entity_type: "GAME",
+      entity_id: game_id,
+      details: `Imported stats successfully for ${filename} (${rows.length} players)`,
       status: "success",
     });
 

@@ -1,6 +1,6 @@
 import express from "express";
 import { z } from "zod";
-import { authenticate, requireAdmin } from "../middleware/auth";
+import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { createCalculationBackup } from "../services/calculationBackupService";
 import { rollbackLastCalculation } from "../services/restoreCalculationService";
 
@@ -12,14 +12,6 @@ const weekIdSchema = z.object({
   week_id: z.string().min(1),
 });
 
-/**
- * Creates a backup of the current week's Leaderboard, User_Lineups, and
- * Weekly_Gameweek state. This is exposed so it can be called before a
- * future score-calculation step runs - it is NOT currently called by
- * anything automatically, since score calculation itself isn't being
- * built yet. Safe to call any time; it only reads and snapshots, never
- * modifies, the sheets it backs up.
- */
 router.post("/calculation-backup/create", async (req, res) => {
   try {
     const { week_id } = weekIdSchema.parse(req.body);
@@ -34,15 +26,10 @@ router.post("/calculation-backup/create", async (req, res) => {
   }
 });
 
-/**
- * Rolls back the most recent calculation backup for a given week, fully
- * restoring Leaderboard, User_Lineups, and Weekly_Gameweek to their
- * pre-calculation state.
- */
-router.post("/calculation-backup/rollback", async (req, res) => {
+router.post("/calculation-backup/rollback", async (req: AuthRequest, res) => {
   try {
     const { week_id } = weekIdSchema.parse(req.body);
-    const result = await rollbackLastCalculation(week_id);
+    const result = await rollbackLastCalculation(week_id, req.user?.user_id || "admin");
     res.json({
       message: "Last calculation successfully rolled back.",
       ...result,

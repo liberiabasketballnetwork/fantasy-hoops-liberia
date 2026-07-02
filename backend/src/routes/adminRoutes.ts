@@ -12,6 +12,7 @@ import {
   getSetting,
   setSetting,
 } from "../services/sheetsService";
+import { logAdminAction } from "../services/adminActionLogger";
 
 const router = express.Router();
 
@@ -154,11 +155,22 @@ router.post("/lock-week", async (req, res) => {
   }
 });
 
-router.post("/reset-week", async (req, res) => {
+router.post("/reset-week", async (req: AuthRequest, res) => {
   try {
     const { week_id } = req.body;
     if (!week_id) return res.status(400).json({ error: "week_id is required" });
     await resetWeekFn(week_id);
+
+    // TASK 5: audit log.
+    await logAdminAction({
+      admin_id: req.user?.user_id || "admin",
+      action_type: "RESET_WEEK",
+      entity_type: "WEEK",
+      entity_id: week_id,
+      details: "Week reset completed",
+      status: "success",
+    });
+
     res.json({ message: "Week reset successfully" });
   } catch (err) {
     res.status(500).json({ error: "Failed to reset week" });
