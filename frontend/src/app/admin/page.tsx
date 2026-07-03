@@ -21,6 +21,11 @@ export default function AdminDashboard() {
   const [rollbackWeekId, setRollbackWeekId] = useState<string | null>(null);
   const [rollingBack, setRollingBack] = useState(false);
 
+  // Force-add-game override state — only shown for locked weeks.
+  const [forceGameWeekId, setForceGameWeekId] = useState<string | null>(null);
+  const [forceGameForm, setForceGameForm] = useState({ home_team: "", away_team: "", game_date: "" });
+  const [forcingGame, setForcingGame] = useState(false);
+
   async function loadAll() {
     try {
       const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
@@ -87,6 +92,24 @@ export default function AdminDashboard() {
       setMessage(err?.response?.data?.error || "Failed to roll back the last calculation.");
     } finally {
       setRollingBack(false);
+    }
+  }
+
+  async function confirmForceAddGame() {
+    if (!forceGameWeekId) return;
+    setForcingGame(true);
+    try {
+      const res = await api.post("/admin/force-add-game", {
+        ...forceGameForm,
+        week_id: forceGameWeekId,
+      });
+      setMessage(`✅ ${res.data.message}`);
+      setForceGameWeekId(null);
+      setForceGameForm({ home_team: "", away_team: "", game_date: "" });
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to add game via override.");
+    } finally {
+      setForcingGame(false);
     }
   }
 
@@ -246,6 +269,14 @@ export default function AdminDashboard() {
               </button>
               <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
               <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>
+              {String(w.is_locked).toUpperCase() === "TRUE" && (
+                <button
+                  onClick={() => setForceGameWeekId(w.week_id)}
+                  className="px-3 py-1 rounded bg-yellow-600 text-xs font-semibold"
+                >
+                  ⚠️ Force Add Game
+                </button>
+              )}
             </div>
           ))
         )}
@@ -304,6 +335,57 @@ export default function AdminDashboard() {
                 className="px-4 py-2 rounded-lg bg-red-700 text-sm font-semibold"
               >
                 {rollingBack ? "Rolling back..." : "Confirm Rollback"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {forceGameWeekId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="card p-6 max-w-md w-full border-2 border-yellow-600">
+            <h2 className="font-bold text-yellow-400 mb-2">⚠️ WARNING</h2>
+            <p className="text-sm text-gray-300 mb-4">
+              This allows adding a missing fixture after weekly lock. This should only be used
+              to correct scheduling mistakes. Users will remain locked.
+            </p>
+            <div className="flex flex-col gap-3 mb-5">
+              <input
+                className="input-field"
+                placeholder="Home team"
+                value={forceGameForm.home_team}
+                onChange={(e) => setForceGameForm({ ...forceGameForm, home_team: e.target.value })}
+              />
+              <input
+                className="input-field"
+                placeholder="Away team"
+                value={forceGameForm.away_team}
+                onChange={(e) => setForceGameForm({ ...forceGameForm, away_team: e.target.value })}
+              />
+              <input
+                type="date"
+                className="input-field"
+                value={forceGameForm.game_date}
+                onChange={(e) => setForceGameForm({ ...forceGameForm, game_date: e.target.value })}
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setForceGameWeekId(null);
+                  setForceGameForm({ home_team: "", away_team: "", game_date: "" });
+                }}
+                disabled={forcingGame}
+                className="px-4 py-2 rounded-lg bg-[#1f2733] text-sm font-semibold"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmForceAddGame}
+                disabled={forcingGame || !forceGameForm.home_team || !forceGameForm.away_team || !forceGameForm.game_date}
+                className="px-4 py-2 rounded-lg bg-yellow-600 text-sm font-semibold"
+              >
+                {forcingGame ? "Adding..." : "Confirm"}
               </button>
             </div>
           </div>

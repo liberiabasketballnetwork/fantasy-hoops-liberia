@@ -195,6 +195,65 @@ router.post("/add-game", async (req, res) => {
   }
 });
 
+// ---------- Emergency Fixture Override ----------
+// Allows admin to add a missing game to a locked week WITHOUT changing
+// is_locked. Users remain unable to submit/edit lineups. This exists
+// solely to correct scheduling mistakes made before lock time.
+router.post("/force-add-game", async (req: AuthRequest, res) => {
+  try {
+    const schema = z.object({
+      home_team: z.string().min(1),
+      away_team: z.string().min(1),
+      game_date: z.string().min(1),
+      week_id: z.string().min(1),
+      status: z.string().optional().default("scheduled"),
+    });
+    const data = schema.parse(req.body);
+
+    // Verify the referenced week exists.
+    const week = await getSheetData("Weekly_Gameweek");
+    const targetWeek = week.find((w) => String(w.week_id) === String(data.week_id));
+    if (!targetWeek) {
+      return res.status(404).json({ error: "Gameweek not found." });
+    }
+
+    // Confirm the week is actually locked — this route only makes sense
+    // as an override when is_locked is TRUE. If the week isn't locked,
+    // use the normal /add-game route instead.
+    if (String(targetWeek.is_locked).toUpperCase() !== "TRUE") {
+      return res.status(400).json({
+        error: "This week is not locked. Use the normal Add Game route instead.",
+      });
+    }
+
+    // Add the game. is_locked is NOT changed — user lock is preserved.
+    const { week_id: _weekId, ...gameData } = data;
+    const game = { game_id: uuidv4(), ...gameData };
+    await appendRow("Games", game);
+
+    // TASK 5: audit log.
+    await logAdminAction({
+      admin_id: req.user?.user_id || "admin",
+      action_type: "FORCE_ADD_GAME",
+      entity_type: "GAME",
+      entity_id: game.game_id,
+      details: `Game added after week lock via admin override: ${data.home_team} vs ${data.away_team} on ${data.game_date} (week: ${data.week_id})`,
+      status: "success",
+    });
+
+    res.status(201).json({
+      game,
+      message: "Game added successfully via admin override. Week remains locked for users.",
+    });
+  } catch (err: any) {
+    if (err.name === "ZodError") {
+      return res.status(400).json({ error: "Invalid input", details: err.errors });
+    }
+    console.error("Force add game error:", err);
+    res.status(500).json({ error: "Failed to add game via override" });
+  }
+});
+
 router.post("/input-stats", async (req, res) => {
   try {
     const schema = z.object({
