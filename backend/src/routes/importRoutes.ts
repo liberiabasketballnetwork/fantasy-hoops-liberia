@@ -182,12 +182,33 @@ function buildAliasLookup(players: any[]): Map<string, string> {
  * matching against real team names instead of guessing by word count.
  * Falls back to the raw text itself if no known team matches.
  */
+/**
+ * Given a raw string extracted from the filename (e.g. "FIRST DIVISION
+ * BARNERSVILLE DRAGONS", with underscores already turned into spaces),
+ * tries to isolate the actual team name by matching against all known team
+ * names (from both the Teams sheet AND the Games sheet home/away values).
+ *
+ * Matching strategy (in priority order):
+ *  1. Exact case-insensitive match against the whole raw string
+ *  2. The raw string ENDS WITH a known team name (strips league/division prefix)
+ *  3. Falls back to the raw string itself (trimmed) if nothing matches
+ *
+ * Using both Teams and Games as the known-names pool means the lookup
+ * works even when a team exists only in Games (not yet in Teams sheet).
+ */
 function resolveTeamNameFromRaw(raw: string, knownTeamNames: string[]): string {
   const normalizedRaw = raw.replace(/\s+/g, " ").trim().toLowerCase();
   let bestMatch: string | null = null;
 
   for (const teamName of knownTeamNames) {
     const normalizedTeam = teamName.replace(/\s+/g, " ").trim().toLowerCase();
+    if (!normalizedTeam) continue;
+    // Prefer exact match first
+    if (normalizedRaw === normalizedTeam) {
+      bestMatch = normalizedTeam;
+      break;
+    }
+    // Then endsWith (strips "FIRST DIVISION " prefixes etc.)
     if (normalizedRaw.endsWith(normalizedTeam)) {
       if (!bestMatch || normalizedTeam.length > bestMatch.length) {
         bestMatch = normalizedTeam;
@@ -196,7 +217,6 @@ function resolveTeamNameFromRaw(raw: string, knownTeamNames: string[]): string {
   }
 
   if (bestMatch) {
-    // Return the team name in its original casing from the Teams sheet.
     const original = knownTeamNames.find(
       (t) => t.replace(/\s+/g, " ").trim().toLowerCase() === bestMatch
     );
@@ -211,6 +231,11 @@ function resolveTeamNameFromRaw(raw: string, knownTeamNames: string[]): string {
  *   "FIRST_DIVISION_MIGHTY_BARROLLE_vs_KNIGHT_REAPERS_20260627.html"
  * into { home_team, away_team, game_date }. Returns nulls for anything it
  * couldn't confidently extract.
+ *
+ * knownTeamNames should include names from BOTH the Teams sheet AND
+ * the Games sheet (home_team + away_team values), so that teams that
+ * exist only in Games (not yet added to the Teams sheet) are still
+ * recognised and league/division prefixes are correctly stripped.
  */
 function parseGameInfoFromFilename(
   filename: string,
@@ -522,8 +547,29 @@ router.post("/import-stats-save", async (req: AuthRequest, res) => {
     }
 
     // STEP 2: extract home_team, away_team, game_date from the filename.
-    const teams = await getSheetData("Teams");
-    const knownTeamNames = teams.map((t) => String(t.team_name));
+    // Build the known-names pool from BOTH the Teams sheet AND the unique
+    // home/away values already in the Games sheet. This is the fix for the
+    // "FIRST DIVISION BARNERSVILLE DRAGONS" bug: if a team exists in Games
+    // but not yet in the Teams sheet, it would previously not be found in
+    // the pool, so resolveTeamNameFromRaw would fall back to returning the
+    // full prefixed string. Including Games values in the pool means the
+    // endsWith() match finds "BARNERSVILLE DRAGONS" correctly.
+    const [teams, gamesForNames] = await Promise.all([
+      getSheetData("Teams"),
+      getSheetData("Games"),
+    ]);
+    const teamNamesFromTeamsSheet = teams.map((t) => String(t.team_name)).filter(Boolean);
+    const teamNamesFromGamesSheet = [
+      ...gamesForNames.map((g) => String(g.home_team)),
+      ...gamesForNames.map((g) => String(g.away_team)),
+    ].filter(Boolean);
+    // Deduplicate, preserving Teams-sheet casing over Games-sheet casing
+    // when the same team name appears in both (Teams is the canonical source).
+    const seenNormalized = new Set(teamNamesFromTeamsSheet.map((n) => n.trim().toLowerCase()));
+    const extraFromGames = teamNamesFromGamesSheet.filter(
+      (n) => !seenNormalized.has(n.trim().toLowerCase())
+    );
+    const knownTeamNames = [...teamNamesFromTeamsSheet, ...extraFromGames];
     const { home_team, away_team, game_date } = parseGameInfoFromFilename(filename, knownTeamNames);
 
     if (!home_team || !away_team || !game_date) {
@@ -536,9 +582,8 @@ router.post("/import-stats-save", async (req: AuthRequest, res) => {
     // STEP 3: find the matching Games row, using normalized team names so
     // casing/whitespace differences between the filename and the sheet
     // (e.g. "MIGHTY BARROLLE" vs "Mighty Barrolle") don't break the match.
-    const games = await getSheetData("Games");
-
-    const matchingGame = games.find((g) => {
+    // gamesForNames was already fetched above in STEP 2 - reuse it.
+    const matchingGame = gamesForNames.find((g) => {
       const gameDate = String(g.game_date).slice(0, 10); // tolerate datetime strings too
       return (
         normalizeTeamName(String(g.home_team)) === normalizeTeamName(home_team) &&
