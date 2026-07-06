@@ -4,10 +4,13 @@ import { filterPlayers, findRowById } from "../services/sheetsService";
 const router = express.Router();
 
 // GET /players?team_id=&position=&status=
+// Defaults to status=active so only selectable players reach the lineup
+// screen. Pass status=all to retrieve every player (used by admin tools).
 router.get("/", async (req, res) => {
   try {
     const { team_id, position, status } = req.query as Record<string, string>;
-    const players = await filterPlayers({ team_id, position, status });
+    const effectiveStatus = status === "all" ? undefined : (status || "active");
+    const players = await filterPlayers({ team_id, position, status: effectiveStatus });
     res.json({ players });
   } catch (err) {
     console.error("Get players error:", err);
