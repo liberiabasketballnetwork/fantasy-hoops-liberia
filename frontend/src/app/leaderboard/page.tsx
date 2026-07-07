@@ -65,7 +65,7 @@ export default function LeaderboardPage() {
               {data.leaderboard.map((row: any) => (
                 <tr key={row.leaderboard_id} className="border-t border-[#1f2733]">
                   <td className="p-3">#{row.rank}</td>
-                  <td className="p-3">{row.full_name}</td>
+                  <td className="p-3">{row.display_name}</td>
                   <td className="p-3 text-right font-bold text-court-orange">{row.score}</td>
                 </tr>
               ))}
@@ -95,7 +95,7 @@ export default function LeaderboardPage() {
                 {selectionData.stats.map((s: any) => (
                   <div key={s.player_id}>
                     <div className="flex justify-between text-sm mb-1">
-                      <span>{s.full_name}</span>
+                      <span>{s.display_name}</span>
                       <span className="text-gray-400">Selected by {s.percentage}% of managers</span>
                     </div>
                     <div className="w-full h-2 bg-[#1f2733] rounded overflow-hidden">

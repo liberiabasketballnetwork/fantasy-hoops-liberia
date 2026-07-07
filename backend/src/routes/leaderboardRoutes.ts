@@ -20,7 +20,11 @@ router.get("/", async (_req, res) => {
     const weekLeaderboard: any[] = filtered
       .map((l) => {
         const user = users.find((u) => u.user_id === l.user_id);
-        return { ...l, full_name: user?.full_name || "Unknown" };
+        const { full_name: _fn, ...publicFields } = l as any;
+        return {
+          ...publicFields,
+          display_name: user?.display_name || user?.full_name || "Unknown",
+        };
       })
       .sort((a: any, b: any) => Number(a.rank) - Number(b.rank));
 
@@ -41,7 +45,11 @@ router.get("/week/:weekId", async (req, res) => {
     const weekLeaderboard: any[] = filtered
       .map((l) => {
         const user = users.find((u) => u.user_id === l.user_id);
-        return { ...l, full_name: user?.full_name || "Unknown" };
+        const { full_name: _fn, ...publicFields } = l as any;
+        return {
+          ...publicFields,
+          display_name: user?.display_name || user?.full_name || "Unknown",
+        };
       })
       .sort((a: any, b: any) => Number(a.rank) - Number(b.rank));
 
