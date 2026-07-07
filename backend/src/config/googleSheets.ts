@@ -50,6 +50,7 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.USERS]: [
     "user_id",
     "full_name",
+    "display_name",
     "email",
     "password_hash",
     "phone",

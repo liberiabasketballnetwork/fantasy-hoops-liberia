@@ -25,7 +25,13 @@ export default function LoginPage() {
     try {
       const res = await api.post("/login", data);
       login(res.data.token, res.data.user);
-      router.push(res.data.user.isAdmin ? "/admin" : "/dashboard");
+      if (res.data.user.isAdmin) {
+        router.push("/admin");
+      } else if (!res.data.user.display_name) {
+        router.push("/choose-display-name");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       setError(err?.response?.data?.error || "Login failed. Check your credentials.");
     } finally {

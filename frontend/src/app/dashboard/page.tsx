@@ -49,7 +49,7 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Welcome, {user.full_name?.split(" ")[0]} 👋</h1>
+      <h1 className="text-2xl font-bold">Welcome, {user.display_name || user.full_name?.split(" ")[0]} 👋</h1>
 
       <div className="card p-5">
         <h2 className="font-bold mb-2">This Week&apos;s Lineup</h2>
