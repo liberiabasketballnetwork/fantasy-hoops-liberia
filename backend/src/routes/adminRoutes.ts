@@ -1,6 +1,8 @@
 import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
+import crypto from "crypto";
+import bcrypt from "bcryptjs";
 import { AuthRequest, authenticate, requireAdmin } from "../middleware/auth";
 import {
   appendRow,
@@ -340,6 +342,77 @@ router.delete("/users/:id", async (req, res) => {
     res.json({ message: "User deleted" });
   } catch (err) {
     res.status(500).json({ error: "Failed to delete user" });
+  }
+});
+
+// PATCH /admin/users/:id/display-name — admin edit with same validation rules.
+router.patch("/users/:id/display-name", async (req: AuthRequest, res) => {
+  try {
+    const { display_name } = req.body;
+    if (!display_name) return res.status(400).json({ error: "display_name is required" });
+
+    const { validateDisplayName, isDisplayNameTaken } = await import("../utils/displayNameUtils");
+    const validation = validateDisplayName(display_name);
+    if (!validation.valid) return res.status(400).json({ error: validation.error });
+
+    const allUsers = await getSheetData("Users");
+    if (isDisplayNameTaken(validation.trimmed!, allUsers, req.params.id)) {
+      return res.status(409).json({
+        error: `The display name "${validation.trimmed}" is already taken.`,
+      });
+    }
+
+    const updated = await updateRow("Users", "user_id", req.params.id, {
+      display_name: validation.trimmed,
+    });
+    if (!updated) return res.status(404).json({ error: "User not found" });
+
+    res.json({ message: "Display name updated.", display_name: validation.trimmed });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update display name" });
+  }
+});
+
+// POST /admin/users/:id/reset-password
+// Generates a secure random 12-character temporary password using Node.js
+// crypto (never the frontend), hashes it with bcrypt, writes only the hash.
+// Returns the plaintext password ONCE for admin to relay to the user.
+// Never logs the password or hash - only the action and user_id.
+router.post("/users/:id/reset-password", async (req: AuthRequest, res) => {
+  try {
+    const allUsers = await getSheetData("Users");
+    const user = allUsers.find((u) => u.user_id === req.params.id);
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    // Generate a secure 12-character temporary password using crypto.
+    // Characters: uppercase, lowercase, digits — avoids ambiguous chars
+    // (0/O, 1/l/I) to make it easy to read back to a user over the phone.
+    const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    const randomBytes = crypto.randomBytes(12);
+    const tempPassword = Array.from(randomBytes)
+      .map((b) => CHARSET[b % CHARSET.length])
+      .join("");
+
+    const password_hash = await bcrypt.hash(tempPassword, 10);
+    await updateRow("Users", "user_id", req.params.id, { password_hash });
+
+    // Audit log - action only, never the password or hash.
+    await logAdminAction({
+      admin_id: req.user?.user_id || "admin",
+      action_type: "RESET_PASSWORD",
+      entity_type: "USER",
+      entity_id: req.params.id,
+      details: `Password reset for user ${user.display_name || user.full_name}`,
+      status: "success",
+    });
+
+    res.json({
+      message: "Password reset successfully.",
+      temp_password: tempPassword,
+    });
+  } catch (err) {
+    console.error("Reset password error:", err);
+    res.status(500).json({ error: "Failed to reset password" });
   }
 });
 

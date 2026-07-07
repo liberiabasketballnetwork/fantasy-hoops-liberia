@@ -26,6 +26,17 @@ export default function AdminDashboard() {
   const [forceGameForm, setForceGameForm] = useState({ home_team: "", away_team: "", game_date: "" });
   const [forcingGame, setForcingGame] = useState(false);
 
+  // Admin display name edit state.
+  const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [editingDisplayName, setEditingDisplayName] = useState("");
+
+  // Admin reset-password state.
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<string | null>(null);
+  const [resetPasswordUserName, setResetPasswordUserName] = useState("");
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   async function loadAll() {
     try {
       const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
@@ -92,6 +103,33 @@ export default function AdminDashboard() {
       setMessage(err?.response?.data?.error || "Failed to roll back the last calculation.");
     } finally {
       setRollingBack(false);
+    }
+  }
+
+  async function confirmResetPassword() {
+    if (!resetPasswordUserId) return;
+    setResettingPassword(true);
+    try {
+      const res = await api.post(`/admin/users/${resetPasswordUserId}/reset-password`);
+      setTempPassword(res.data.temp_password);
+      setCopied(false);
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to reset password.");
+      setResetPasswordUserId(null);
+    } finally {
+      setResettingPassword(false);
+    }
+  }
+
+  async function adminSaveDisplayName(userId: string) {
+    if (!editingDisplayName.trim()) return;
+    try {
+      await api.patch(`/admin/users/${userId}/display-name`, { display_name: editingDisplayName });
+      setMessage("✅ Display name updated.");
+      setEditingUserId(null);
+      loadAll();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to update display name.");
     }
   }
 
@@ -304,10 +342,56 @@ export default function AdminDashboard() {
       <div className="card p-5">
         <h2 className="font-bold mb-3">Users ({users.length})</h2>
         <div className="flex flex-col gap-1 text-sm max-h-60 overflow-y-auto">
-          {users.map((u) => (
-            <div key={u.user_id} className="flex justify-between border-b border-[#1f2733] py-1">
-              <span>{u.full_name}</span>
-              <span className="text-gray-400">{u.phone || u.email || "—"}</span>
+          {users.map((u: any) => (
+            <div key={u.user_id} className="border-b border-[#1f2733] py-2">
+              <div className="flex justify-between items-center">
+                <div>
+                  <span className="font-medium">{u.full_name}</span>
+                  {u.display_name && (
+                    <span className="ml-2 text-xs text-court-orange">@{u.display_name}</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-gray-400 text-xs">{u.phone || u.email || "—"}</span>
+                  <button
+                    onClick={() => {
+                      setEditingUserId(u.user_id);
+                      setEditingDisplayName(u.display_name || "");
+                    }}
+                    className="text-xs text-court-orange"
+                  >
+                    Edit Name
+                  </button>
+                  <button
+                    onClick={() => {
+                      setResetPasswordUserId(u.user_id);
+                      setResetPasswordUserName(u.display_name || u.full_name);
+                      setTempPassword(null);
+                    }}
+                    className="text-xs text-red-400"
+                  >
+                    Reset Password
+                  </button>
+                </div>
+              </div>
+              {editingUserId === u.user_id && (
+                <div className="flex items-center gap-2 mt-2">
+                  <input
+                    className="input-field flex-1 py-1 text-xs"
+                    placeholder="Display name"
+                    value={editingDisplayName}
+                    onChange={(e) => setEditingDisplayName(e.target.value)}
+                  />
+                  <button
+                    onClick={() => adminSaveDisplayName(u.user_id)}
+                    className="px-2 py-1 rounded bg-court-orange text-xs"
+                  >Save</button>
+                  <button
+                    onClick={() => setEditingUserId(null)}
+                    className="px-2 py-1 rounded bg-[#1f2733] text-xs"
+                  >✕</button>
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -337,6 +421,67 @@ export default function AdminDashboard() {
                 {rollingBack ? "Rolling back..." : "Confirm Rollback"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {(resetPasswordUserId || tempPassword) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="card p-6 max-w-md w-full border-2 border-red-700">
+            {!tempPassword ? (
+              <>
+                <h2 className="font-bold text-red-400 mb-2">Reset Password</h2>
+                <p className="text-sm text-gray-300 mb-5">
+                  Are you sure you want to reset the password for{" "}
+                  <span className="font-bold">{resetPasswordUserName}</span>? A secure
+                  temporary password will be generated. Share it with the user and ask
+                  them to change it immediately.
+                </p>
+                <div className="flex justify-end gap-3">
+                  <button
+                    onClick={() => setResetPasswordUserId(null)}
+                    disabled={resettingPassword}
+                    className="px-4 py-2 rounded-lg bg-[#1f2733] text-sm font-semibold"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={confirmResetPassword}
+                    disabled={resettingPassword}
+                    className="px-4 py-2 rounded-lg bg-red-700 text-sm font-semibold"
+                  >
+                    {resettingPassword ? "Resetting..." : "Confirm Reset"}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="font-bold text-green-400 mb-2">✅ Password Reset</h2>
+                <p className="text-sm text-gray-300 mb-3">
+                  Share this temporary password with the user. It will not be shown again.
+                </p>
+                <div className="flex items-center gap-2 bg-[#0b0f14] rounded-lg px-4 py-3 mb-4">
+                  <code className="flex-1 text-court-orange font-bold tracking-widest text-sm">
+                    {tempPassword}
+                  </code>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(tempPassword);
+                      setCopied(true);
+                    }}
+                    className="px-3 py-1 rounded bg-[#1f2733] text-xs"
+                  >
+                    {copied ? "Copied!" : "Copy"}
+                  </button>
+                </div>
+                <button
+                  onClick={() => { setTempPassword(null); setResetPasswordUserId(null); }}
+                  className="w-full px-4 py-2 rounded-lg bg-[#1f2733] text-sm font-semibold"
+                >
+                  Done
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
