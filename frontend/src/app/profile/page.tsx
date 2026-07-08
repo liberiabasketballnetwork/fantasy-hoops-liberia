@@ -5,11 +5,9 @@ import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { AppModal, LoadingOverlay } from "@/components/ui";
 
-interface DisplayNameForm {
-  display_name: string;
-}
-
+interface DisplayNameForm { display_name: string; }
 interface ChangePasswordForm {
   current_password: string;
   new_password: string;
@@ -19,17 +17,22 @@ interface ChangePasswordForm {
 export default function ProfilePage() {
   const { user, loading, login, token } = useAuth();
 
-  // Display name edit state.
   const { register: regDN, handleSubmit: handleDN, formState: { errors: dnErrors } } = useForm<DisplayNameForm>();
   const [editingDN, setEditingDN] = useState(false);
   const [dnError, setDnError] = useState("");
   const [savingDN, setSavingDN] = useState(false);
 
-  // Change password state.
   const { register: regPW, handleSubmit: handlePW, reset: resetPW, formState: { errors: pwErrors } } = useForm<ChangePasswordForm>();
-  const [pwError, setPwError] = useState("");
-  const [pwSuccess, setPwSuccess] = useState("");
   const [savingPW, setSavingPW] = useState(false);
+
+  // FHDS modal
+  const [modal, setModal] = useState<{
+    open: boolean;
+    type: "success" | "warning" | "error" | "info";
+    title: string;
+    message: string;
+  }>({ open: false, type: "success", title: "", message: "" });
+  const closeModal = () => setModal((m) => ({ ...m, open: false }));
 
   if (loading) return null;
 
@@ -57,10 +60,8 @@ export default function ProfilePage() {
   }
 
   async function onChangePassword(data: ChangePasswordForm) {
-    setPwError("");
-    setPwSuccess("");
     if (data.new_password !== data.confirm_password) {
-      setPwError("New password and confirmation do not match.");
+      setModal({ open: true, type: "warning", title: "Passwords Don't Match", message: "New password and confirmation do not match." });
       return;
     }
     setSavingPW(true);
@@ -70,10 +71,10 @@ export default function ProfilePage() {
         new_password: data.new_password,
         confirm_password: data.confirm_password,
       });
-      setPwSuccess("Password changed successfully.");
+      setModal({ open: true, type: "success", title: "Password Changed", message: "Your password has been updated successfully." });
       resetPW();
     } catch (err: any) {
-      setPwError(err?.response?.data?.error || "Failed to change password.");
+      setModal({ open: true, type: "error", title: "Change Failed", message: err?.response?.data?.error || "Failed to change password." });
     } finally {
       setSavingPW(false);
     }
@@ -81,6 +82,17 @@ export default function ProfilePage() {
 
   return (
     <div className="max-w-md flex flex-col gap-5">
+      <LoadingOverlay visible={savingPW} title="Updating Password..." message="Please wait." />
+
+      <AppModal
+        open={modal.open}
+        type={modal.type}
+        title={modal.title}
+        message={modal.message}
+        confirmText="OK"
+        onConfirm={closeModal}
+      />
+
       <div className="card p-6">
         <h1 className="text-2xl font-bold mb-4">My Profile</h1>
         <div className="flex flex-col gap-4 text-sm">
@@ -131,12 +143,7 @@ export default function ProfilePage() {
         <h2 className="font-bold mb-4">Change Password</h2>
         <form onSubmit={handlePW(onChangePassword)} className="flex flex-col gap-3">
           <div>
-            <input
-              type="password"
-              className="input-field"
-              placeholder="Current password"
-              {...regPW("current_password", { required: true })}
-            />
+            <input type="password" className="input-field" placeholder="Current password" {...regPW("current_password", { required: true })} />
             {pwErrors.current_password && <p className="text-red-400 text-xs mt-1">Current password is required</p>}
           </div>
           <div>
@@ -157,16 +164,9 @@ export default function ProfilePage() {
             <p className="text-xs text-gray-500 mt-1">Min 8 chars · uppercase · lowercase · number</p>
           </div>
           <div>
-            <input
-              type="password"
-              className="input-field"
-              placeholder="Confirm new password"
-              {...regPW("confirm_password", { required: true })}
-            />
+            <input type="password" className="input-field" placeholder="Confirm new password" {...regPW("confirm_password", { required: true })} />
             {pwErrors.confirm_password && <p className="text-red-400 text-xs mt-1">Please confirm your new password</p>}
           </div>
-          {pwError && <p className="text-red-400 text-sm">{pwError}</p>}
-          {pwSuccess && <p className="text-green-400 text-sm">{pwSuccess}</p>}
           <button type="submit" disabled={savingPW} className="btn-primary w-full">
             {savingPW ? "Changing..." : "Change Password"}
           </button>
