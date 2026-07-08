@@ -14,11 +14,6 @@ export default function RulesPage() {
       <h1 className="text-2xl font-bold">📋 Rules & Scoring</h1>
       <ol className="list-decimal list-inside text-gray-300 text-sm flex flex-col gap-1">
         <li>Every gameweek, pick 5 real Liberian basketball players.</li>
-        <li>
-          You have a <strong>100-credit budget</strong>. Every player has a price based on how
-          strong they are — star players cost more, so you can't just stack the 5 best players
-          on every team. Build wisely.
-        </li>
         <li>Choose one of your 5 as Captain — their score is doubled.</li>
         <li>Submit your lineup before the weekly submission deadline.</li>
         <li>Once games are played, admins enter real stats.</li>

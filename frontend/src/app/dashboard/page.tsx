@@ -8,7 +8,6 @@ import { api } from "@/lib/api";
 export default function DashboardPage() {
   const { user, loading } = useAuth();
   const [lineup, setLineup] = useState<any>(null);
-  const [lineupPlayers, setLineupPlayers] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<any>(null);
   const [fetching, setFetching] = useState(true);
 
@@ -23,7 +22,6 @@ export default function DashboardPage() {
             params: { week_id: lbRes.data.week.week_id },
           });
           setLineup(lineupRes.data.lineup);
-          setLineupPlayers(lineupRes.data.players || []);
         }
       } catch (e) {
         // not logged in or no data yet - fine for an MVP dashboard
@@ -49,38 +47,15 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <h1 className="text-2xl font-bold">Welcome, {user.display_name || user.full_name?.split(" ")[0]} 👋</h1>
+      <h1 className="text-2xl font-bold">Welcome, {user.full_name?.split(" ")[0]} 👋</h1>
 
       <div className="card p-5">
         <h2 className="font-bold mb-2">This Week&apos;s Lineup</h2>
         {leaderboard?.week ? (
           lineup ? (
-            <div>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="px-3 py-1 rounded-lg bg-court-orange text-sm font-semibold">
-                  🔒 Lineup Locked
-                </span>
-                <p className="text-sm text-gray-400">
-                  You have already submitted your lineup for this week.
-                </p>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                {lineupPlayers.map((p) => {
-                  const isCaptain = String(p.player_id) === String(lineup.captain_player_id);
-                  return (
-                    <div
-                      key={p.player_id}
-                      className={`px-3 py-2 rounded-lg bg-[#0b0f14] border ${
-                        isCaptain ? "border-court-orange" : "border-[#1f2733]"
-                      } text-sm flex items-center justify-between`}
-                    >
-                      <span>{p.full_name}</span>
-                      {isCaptain && <span className="text-xs text-court-orange font-bold">★ C</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+            <p className="text-sm text-gray-400">
+              You&apos;ve submitted your lineup for this gameweek. Good luck! 🍀
+            </p>
           ) : (
             <div>
               <p className="text-sm text-gray-400 mb-3">

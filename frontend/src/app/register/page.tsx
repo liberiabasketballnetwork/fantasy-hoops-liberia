@@ -9,9 +9,8 @@ import { useAuth } from "@/context/AuthContext";
 
 interface FormData {
   full_name: string;
-  display_name: string;
-  phone: string;
   email: string;
+  phone: string;
   password: string;
 }
 
@@ -47,28 +46,11 @@ export default function RegisterPage() {
           {errors.full_name && <p className="text-red-400 text-xs mt-1">Full name is required</p>}
         </div>
         <div>
-          <input
-            className="input-field"
-            placeholder="Display name"
-            {...register("display_name", {
-              required: true,
-              maxLength: 32,
-              pattern: /^[a-zA-Z0-9 _-]+$/,
-            })}
-          />
-          <p className="text-xs text-gray-500 mt-1">
-            This is the name other players will see on leaderboards and throughout the competition.
-          </p>
-          {errors.display_name?.type === "required" && <p className="text-red-400 text-xs mt-1">Display name is required</p>}
-          {errors.display_name?.type === "maxLength" && <p className="text-red-400 text-xs mt-1">Display name must be 32 characters or fewer</p>}
-          {errors.display_name?.type === "pattern" && <p className="text-red-400 text-xs mt-1">Only letters, numbers, spaces, _ and - are allowed</p>}
+          <input className="input-field" type="email" placeholder="Email address" {...register("email", { required: true })} />
+          {errors.email && <p className="text-red-400 text-xs mt-1">A valid email is required</p>}
         </div>
         <div>
-          <input className="input-field" type="tel" placeholder="Phone number" {...register("phone", { required: true, minLength: 6 })} />
-          {errors.phone && <p className="text-red-400 text-xs mt-1">A valid phone number is required</p>}
-        </div>
-        <div>
-          <input className="input-field" type="email" placeholder="Email address (optional)" {...register("email")} />
+          <input className="input-field" placeholder="Phone (optional)" {...register("phone")} />
         </div>
         <div>
           <input className="input-field" type="password" placeholder="Password" {...register("password", { required: true, minLength: 6 })} />
@@ -84,7 +66,9 @@ export default function RegisterPage() {
 
       <p className="text-sm text-gray-400 mt-4">
         Already have an account?{" "}
-        <Link href="/login" className="text-court-orange">Log in</Link>
+        <Link href="/login" className="text-court-orange">
+          Log in
+        </Link>
       </p>
     </div>
   );

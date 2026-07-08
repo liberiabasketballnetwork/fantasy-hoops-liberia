@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 interface FormData {
-  phone: string;
+  email: string;
   password: string;
 }
 
@@ -25,13 +25,7 @@ export default function LoginPage() {
     try {
       const res = await api.post("/login", data);
       login(res.data.token, res.data.user);
-      if (res.data.user.isAdmin) {
-        router.push("/admin");
-      } else if (!res.data.user.display_name) {
-        router.push("/choose-display-name");
-      } else {
-        router.push("/dashboard");
-      }
+      router.push(res.data.user.isAdmin ? "/admin" : "/dashboard");
     } catch (err: any) {
       setError(err?.response?.data?.error || "Login failed. Check your credentials.");
     } finally {
@@ -45,7 +39,7 @@ export default function LoginPage() {
       <p className="text-sm text-gray-400 mb-5">Log in to manage your fantasy lineup.</p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <input className="input-field" type="tel" placeholder="Phone number" {...register("phone", { required: true })} />
+        <input className="input-field" type="email" placeholder="Email address" {...register("email", { required: true })} />
         <input className="input-field" type="password" placeholder="Password" {...register("password", { required: true })} />
 
         {error && <p className="text-red-400 text-sm">{error}</p>}
@@ -62,7 +56,7 @@ export default function LoginPage() {
         </Link>
       </p>
       <p className="text-xs text-gray-500 mt-2">
-        Admin? Use the <Link href="/admin/login" className="text-court-orange">admin login page</Link> instead.
+        Admin? Log in with your admin email here — you&apos;ll be redirected automatically.
       </p>
     </div>
   );

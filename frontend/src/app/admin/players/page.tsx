@@ -13,11 +13,10 @@ export default function AdminPlayersPage() {
     full_name: "",
     team_id: "",
     position: "PG",
-    fantasy_price: 10,
+    fantasy_price: 0,
     average_points: 0,
     average_rebounds: 0,
     average_assists: 0,
-    photo_url: "",
   });
 
   async function load() {
@@ -35,29 +34,10 @@ export default function AdminPlayersPage() {
     try {
       await api.post("/admin/add-player", form);
       setMessage("✅ Player added.");
-      setForm({ ...form, full_name: "", photo_url: "" });
+      setForm({ ...form, full_name: "" });
       load();
     } catch (err: any) {
       setMessage(err?.response?.data?.error || "Failed to add player.");
-    }
-  }
-
-  async function updatePrice(playerId: string, newPrice: number) {
-    try {
-      await api.put(`/admin/edit-player/${playerId}`, { fantasy_price: newPrice });
-      load();
-    } catch (err: any) {
-      setMessage(err?.response?.data?.error || "Failed to update price.");
-    }
-  }
-
-  async function updatePhoto(playerId: string, newPhotoUrl: string) {
-    try {
-      await api.put(`/admin/edit-player/${playerId}`, { photo_url: newPhotoUrl });
-      setMessage("✅ Photo updated.");
-      load();
-    } catch (err: any) {
-      setMessage(err?.response?.data?.error || "Failed to update photo.");
     }
   }
 
@@ -79,11 +59,6 @@ export default function AdminPlayersPage() {
 
       <div className="card p-5">
         <h2 className="font-bold mb-3">Add Player</h2>
-        <p className="text-xs text-gray-400 mb-3">
-          Set a fantasy price for each player based on how strong they are — users get a fixed
-          budget (default 100 credits) to build their squad of 5, so pricing top players higher
-          stops everyone from just picking the same all-star lineup.
-        </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input className="input-field" placeholder="Full name" value={form.full_name}
             onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
@@ -98,16 +73,12 @@ export default function AdminPlayersPage() {
             onChange={(e) => setForm({ ...form, position: e.target.value })}>
             {["PG", "SG", "SF", "PF", "C"].map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-          <input type="number" className="input-field" placeholder="Fantasy price (e.g. 5-25)" value={form.fantasy_price}
-            onChange={(e) => setForm({ ...form, fantasy_price: Number(e.target.value) })} />
           <input type="number" className="input-field" placeholder="Avg points" value={form.average_points}
             onChange={(e) => setForm({ ...form, average_points: Number(e.target.value) })} />
           <input type="number" className="input-field" placeholder="Avg rebounds" value={form.average_rebounds}
             onChange={(e) => setForm({ ...form, average_rebounds: Number(e.target.value) })} />
           <input type="number" className="input-field" placeholder="Avg assists" value={form.average_assists}
             onChange={(e) => setForm({ ...form, average_assists: Number(e.target.value) })} />
-          <input className="input-field md:col-span-3" placeholder="Photo URL (optional — paste a link from Google Drive, Imgur, etc.)" value={form.photo_url}
-            onChange={(e) => setForm({ ...form, photo_url: e.target.value })} />
         </div>
         <button onClick={addPlayer} className="btn-primary mt-3">Add Player</button>
       </div>
@@ -116,11 +87,8 @@ export default function AdminPlayersPage() {
         <table className="w-full text-sm">
           <thead className="bg-[#0b0f14] text-gray-400">
             <tr>
-              <th className="text-left p-3">Photo</th>
               <th className="text-left p-3">Name</th>
-              <th className="text-left p-3">Team</th>
               <th className="text-left p-3">Position</th>
-              <th className="text-left p-3">Price</th>
               <th className="text-left p-3">PPG</th>
               <th className="text-left p-3">RPG</th>
               <th className="text-left p-3">APG</th>
@@ -130,47 +98,8 @@ export default function AdminPlayersPage() {
           <tbody>
             {players.map((p) => (
               <tr key={p.player_id} className="border-t border-[#1f2733]">
-                <td className="p-3">
-                  <div className="flex items-center gap-2">
-                    {p.photo_url ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={p.photo_url}
-                        alt={p.full_name}
-                        className="w-8 h-8 rounded-full object-cover flex-shrink-0"
-                        onError={(e) => ((e.target as HTMLImageElement).style.display = "none")}
-                      />
-                    ) : (
-                      <span className="text-gray-500 flex-shrink-0">🏀</span>
-                    )}
-                    <input
-                      type="text"
-                      defaultValue={p.photo_url || ""}
-                      placeholder="Paste photo URL"
-                      className="input-field w-40 py-1 text-xs"
-                      onBlur={(e) => {
-                        const val = e.target.value.trim();
-                        if (val !== (p.photo_url || "")) updatePhoto(p.player_id, val);
-                      }}
-                    />
-                  </div>
-                </td>
                 <td className="p-3">{p.full_name}</td>
-                <td className="p-3 text-gray-400">
-                  {teams.find((t) => t.team_id === p.team_id)?.team_name || "—"}
-                </td>
                 <td className="p-3">{p.position}</td>
-                <td className="p-3">
-                  <input
-                    type="number"
-                    defaultValue={p.fantasy_price || 0}
-                    className="input-field w-20 py-1"
-                    onBlur={(e) => {
-                      const val = Number(e.target.value);
-                      if (val !== Number(p.fantasy_price)) updatePrice(p.player_id, val);
-                    }}
-                  />
-                </td>
                 <td className="p-3">{p.average_points}</td>
                 <td className="p-3">{p.average_rebounds}</td>
                 <td className="p-3">{p.average_assists}</td>
@@ -185,4 +114,3 @@ export default function AdminPlayersPage() {
     </div>
   );
 }
-
