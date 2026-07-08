@@ -11,6 +11,7 @@ const weekIdSchema = z.object({ week_id: z.string().min(1) });
 
 router.post("/update-player-prices", async (req: AuthRequest, res) => {
   try {
+    console.log("[priceAdjustmentRoutes] /update-player-prices called, body:", req.body);
     const { week_id } = weekIdSchema.parse(req.body);
     const result = await adjustPlayerPrices(week_id, req.user?.user_id || "admin");
     res.json({
@@ -18,6 +19,7 @@ router.post("/update-player-prices", async (req: AuthRequest, res) => {
       ...result,
     });
   } catch (err: any) {
+    console.error("[priceAdjustmentRoutes] error:", err?.message || err);
     if (err.name === "ZodError") {
       return res.status(400).json({ error: "Invalid input", details: err.errors });
     }
@@ -25,7 +27,7 @@ router.post("/update-player-prices", async (req: AuthRequest, res) => {
       return res.status(400).json({ error: err.message });
     }
     console.error("Update player prices error:", err);
-    res.status(500).json({ error: "Failed to update player prices" });
+    res.status(500).json({ error: err?.message || "Failed to update player prices" });
   }
 });
 
