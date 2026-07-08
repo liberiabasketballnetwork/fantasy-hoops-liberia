@@ -179,7 +179,11 @@ export default function AdminDashboard() {
       setMessage(res.data.message || "Player prices updated.");
       loadAll();
     } catch (err: any) {
-      setMessage(err?.response?.data?.error || "Failed to update player prices.");
+      const msg =
+        err?.response?.data?.error ||
+        err?.message ||
+        "Failed to update player prices. Check Render logs for details.";
+      setMessage(msg);
     } finally {
       setUpdatingPrices(false);
     }

@@ -54,22 +54,30 @@ export async function adjustPlayerPrices(
   const week = allWeeks.find((w) => String(w.week_id) === String(week_id));
   if (!week) throw new PriceAdjustmentError("Gameweek not found.");
 
+  // Log what the service actually reads from the sheet so mismatches are
+  // immediately visible in Render logs rather than failing silently.
+  console.log("[priceAdjustmentService] week row read from sheet:", {
+    week_id: week.week_id,
+    scores_calculated: week.scores_calculated,
+    prices_updated: week.prices_updated,
+    start_date: week.start_date,
+    end_date: week.end_date,
+  });
+
   // Prevent double adjustment for the same week.
   if (String(week.prices_updated).toUpperCase() === "TRUE") {
     throw new PriceAdjustmentError("Player prices have already been updated for this week.");
   }
 
-  // Require scores to have been calculated first — prices are based on
-  // that week's performance, so calculating before scores exist would
-  // adjust from zero for everyone.
+  // Require scores to have been calculated first.
   if (String(week.scores_calculated).toUpperCase() !== "TRUE") {
+    console.log("[priceAdjustmentService] blocked: scores_calculated =", week.scores_calculated);
     throw new PriceAdjustmentError(
       "Weekly scores must be calculated before adjusting prices. Run 'Calculate Weekly Scores' first."
     );
   }
 
-  // Scope to completed games within the week's date range — same logic
-  // as weeklyScoreCalculationService.ts to keep consistency.
+  // Scope to completed games within the week's date range.
   const allGames = await getSheetData("Games");
   const startDate = new Date(week.start_date);
   const endDate = new Date(week.end_date);
@@ -85,6 +93,8 @@ export async function adjustPlayerPrices(
       .map((g) => g.game_id)
   );
 
+  console.log("[priceAdjustmentService] validGameIds in week:", [...validGameIds]);
+
   // Sum fantasy_points from Player_Stats for each player, scoped to the week.
   const allStats = await getSheetData("Player_Stats");
   const cumulativeByPlayer: Record<string, number> = {};
@@ -93,6 +103,8 @@ export async function adjustPlayerPrices(
     const pid = stat.player_id;
     cumulativeByPlayer[pid] = (cumulativeByPlayer[pid] || 0) + Number(stat.fantasy_points || 0);
   }
+
+  console.log("[priceAdjustmentService] players with stats this week:", Object.keys(cumulativeByPlayer).length);
 
   // Load current players and apply adjustments.
   const allPlayers = await getSheetData("Players");
