@@ -189,9 +189,39 @@ export async function updateRow(
 }
 
 /**
- * Delete a row identified by idField=idValue. Uses batchUpdate (deleteDimension)
- * which requires the sheet's internal sheetId — we look that up first.
+ * Batch-update multiple rows across a single sheet in ONE API call.
+ * Each entry supplies the full set of column values for that row.
+ * This is used by the price adjustment engine to avoid hitting Google's
+ * per-minute read quota when updating many rows sequentially.
+ *
+ * updates: array of { rowNumber (1-indexed, including header), data: Row }
  */
+export async function batchUpdateRows(
+  sheetName: string,
+  updates: { rowNumber: number; data: Row }[]
+): Promise<void> {
+  if (updates.length === 0) return;
+
+  const headers = SHEET_HEADERS[sheetName];
+  if (!headers) throw new Error(`Unknown sheet: ${sheetName}`);
+
+  const data = updates.map(({ rowNumber, data: rowData }) => ({
+    range: `${sheetName}!A${rowNumber}:${colLetter(headers.length - 1)}${rowNumber}`,
+    values: [headers.map((h) => rowData[h] ?? "")],
+  }));
+
+  await withRetry(() =>
+    sheets.spreadsheets.values.batchUpdate({
+      spreadsheetId: SPREADSHEET_ID,
+      requestBody: {
+        valueInputOption: "USER_ENTERED",
+        data,
+      },
+    })
+  );
+
+  invalidateCache(sheetName);
+}
 export async function deleteRow(
   sheetName: string,
   idField: string,

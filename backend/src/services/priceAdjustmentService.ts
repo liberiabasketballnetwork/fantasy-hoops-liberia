@@ -1,5 +1,5 @@
 import { v4 as uuidv4 } from "uuid";
-import { getSheetData, appendRow, updateRow } from "./sheetsService";
+import { getSheetData, appendRow, updateRow, batchUpdateRows } from "./sheetsService";
 import { logAdminAction } from "./adminActionLogger";
 
 /**
@@ -106,8 +106,11 @@ export async function adjustPlayerPrices(
 
   console.log("[priceAdjustmentService] players with stats this week:", Object.keys(cumulativeByPlayer).length);
 
-  // Load current players and apply adjustments.
+  // Load all players once. We already have their full row data so we can
+  // build the complete updated row without any extra reads — this keeps
+  // the total API call count to O(1) rather than O(n players).
   const allPlayers = await getSheetData("Players");
+
   const result: PriceAdjustmentResult = {
     updated_count: 0,
     no_change_count: 0,
@@ -115,8 +118,13 @@ export async function adjustPlayerPrices(
     changes: [],
   };
 
-  for (const player of allPlayers) {
-    // Requirement 2: ignore players with no stats for this week.
+  // Collect all updates so we can write them in a single batch API call.
+  const playerBatchUpdates: { rowNumber: number; data: Record<string, any> }[] = [];
+  const priceHistoryRows: Record<string, any>[] = [];
+
+  for (let i = 0; i < allPlayers.length; i++) {
+    const player = allPlayers[i];
+
     if (!(player.player_id in cumulativeByPlayer)) {
       result.ignored_count++;
       continue;
@@ -134,19 +142,16 @@ export async function adjustPlayerPrices(
     const rawNewPrice = oldPrice + delta;
     const newPrice = Math.max(PRICE_FLOOR, Math.min(PRICE_CEILING, rawNewPrice));
 
-    // If clamping means the price doesn't actually change, skip.
     if (newPrice === oldPrice) {
       result.no_change_count++;
       continue;
     }
 
-    // Update the player's price.
-    await updateRow("Players", "player_id", player.player_id, {
-      fantasy_price: newPrice,
-    });
+    // Row number is i+2 (row 1 is header, array is 0-indexed).
+    const updatedPlayer = { ...player, fantasy_price: newPrice };
+    playerBatchUpdates.push({ rowNumber: i + 2, data: updatedPlayer });
 
-    // Record in Price_History.
-    await appendRow("Price_History", {
+    priceHistoryRows.push({
       price_history_id: uuidv4(),
       player_id: player.player_id,
       week_id,
@@ -164,6 +169,18 @@ export async function adjustPlayerPrices(
       new_price: newPrice,
       weekly_fantasy_points: weeklyPoints,
     });
+  }
+
+  // Write all player price changes in a single batch API call.
+  if (playerBatchUpdates.length > 0) {
+    await batchUpdateRows("Players", playerBatchUpdates);
+  }
+
+  // Append Price_History rows one at a time (append doesn't support batch
+  // natively, but these writes happen after the heavy player update so
+  // quota pressure is much lower at this point).
+  for (const historyRow of priceHistoryRows) {
+    await appendRow("Price_History", historyRow);
   }
 
   // Mark the week so this can't be run twice.
