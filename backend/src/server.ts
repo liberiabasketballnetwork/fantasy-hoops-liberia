@@ -22,6 +22,7 @@ import miscRoutes from "./routes/miscRoutes";
 import importRoutes from "./routes/importRoutes";
 import calculationBackupRoutes from "./routes/calculationBackupRoutes";
 import weeklyScoreRoutes from "./routes/weeklyScoreRoutes";
+import priceAdjustmentRoutes from "./routes/priceAdjustmentRoutes";
 
 dotenv.config();
 
@@ -88,6 +89,7 @@ app.use("/admin", adminRoutes); // all /admin/* routes
 app.use("/admin", importRoutes); // /admin/import-stats-preview
 app.use("/admin", calculationBackupRoutes); // /admin/calculation-backup/*
 app.use("/admin", weeklyScoreRoutes); // /admin/calculate-weekly-scores
+app.use("/admin", priceAdjustmentRoutes); // /admin/update-player-prices
 app.use("/", miscRoutes); // /teams, /sponsors
 
 // ---------- 404 ----------

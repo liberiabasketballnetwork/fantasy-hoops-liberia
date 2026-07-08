@@ -155,6 +155,7 @@ export default function AdminDashboard() {
   // "Calculate Scores" button/handler (scoringEngine.ts-backed) was
   // removed during a codebase cleanup pass.
   const [calculatingWeeklyScores, setCalculatingWeeklyScores] = useState(false);
+  const [updatingPrices, setUpdatingPrices] = useState(false);
 
   async function calculateWeeklyScores(weekId: string) {
     setCalculatingWeeklyScores(true);
@@ -167,6 +168,20 @@ export default function AdminDashboard() {
       setMessage(err?.response?.data?.error || "Failed to calculate weekly scores.");
     } finally {
       setCalculatingWeeklyScores(false);
+    }
+  }
+
+  async function updatePlayerPrices(weekId: string) {
+    setUpdatingPrices(true);
+    setMessage("");
+    try {
+      const res = await api.post("/admin/update-player-prices", { week_id: weekId });
+      setMessage(res.data.message || "Player prices updated.");
+      loadAll();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || "Failed to update player prices.");
+    } finally {
+      setUpdatingPrices(false);
     }
   }
 
@@ -304,6 +319,13 @@ export default function AdminDashboard() {
                 className="px-3 py-1 rounded bg-blue-600 text-xs"
               >
                 {calculatingWeeklyScores ? "Calculating..." : "Calculate Weekly Scores"}
+              </button>
+              <button
+                onClick={() => updatePlayerPrices(w.week_id)}
+                disabled={updatingPrices}
+                className="px-3 py-1 rounded bg-blue-600 text-xs"
+              >
+                {updatingPrices ? "Updating..." : "Update Player Prices"}
               </button>
               <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
               <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>

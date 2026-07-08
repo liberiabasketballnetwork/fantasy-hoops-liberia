@@ -43,6 +43,7 @@ export const SHEET_NAMES = {
   IMPORT_LOG: "Import_Log",
   CALCULATION_BACKUP: "Calculation_Backup",
   ADMIN_ACTIONS_LOG: "Admin_Actions_Log",
+  PRICE_HISTORY: "Price_History",
 } as const;
 
 // Column headers per sheet, in order. Row 1 of every tab must match these exactly.
@@ -81,6 +82,7 @@ export const SHEET_HEADERS: Record<string, string[]> = {
     "submission_deadline",
     "is_locked",
     "scores_calculated",
+    "prices_updated",
     "created_at",
   ],
   [SHEET_NAMES.USER_LINEUPS]: [
@@ -126,6 +128,15 @@ export const SHEET_HEADERS: Record<string, string[]> = {
     "entity_id",
     "details",
     "status",
+    "created_at",
+  ],
+  [SHEET_NAMES.PRICE_HISTORY]: [
+    "price_history_id",
+    "player_id",
+    "week_id",
+    "old_price",
+    "new_price",
+    "weekly_fantasy_points",
     "created_at",
   ],
 };
