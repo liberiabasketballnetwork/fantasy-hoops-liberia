@@ -86,7 +86,7 @@ export async function getSheetData(sheetName: string, useCache = true): Promise<
   const headers = SHEET_HEADERS[sheetName];
   if (!headers) throw new Error(`Unknown sheet: ${sheetName}`);
 
-  const range = `${sheetName}!A2:${colLetter(headers.length - 1)}`;
+  const range = sheetRange(sheetName, `A2:${colLetter(headers.length - 1)}`);
   const res = await withRetry(() =>
     sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range })
   );
@@ -99,6 +99,18 @@ export async function getSheetData(sheetName: string, useCache = true): Promise<
 /**
  * Append a new row (object) to the end of a sheet.
  */
+/**
+ * Wraps a sheet name in single quotes for use in Google Sheets API range
+ * notation. The API requires quoting for sheet names that contain spaces,
+ * underscores, or other special characters — without it, names like
+ * "Price_History" cause "Unable to parse range" errors on first write.
+ * Any literal single quotes inside the name are escaped as ''.
+ */
+function sheetRange(sheetName: string, range: string): string {
+  const quoted = `'${sheetName.replace(/'/g, "''")}'`;
+  return `${quoted}!${range}`;
+}
+
 export async function appendRow(sheetName: string, rowObject: Row): Promise<Row> {
   const headers = SHEET_HEADERS[sheetName];
   if (!headers) throw new Error(`Unknown sheet: ${sheetName}`);
@@ -108,7 +120,7 @@ export async function appendRow(sheetName: string, rowObject: Row): Promise<Row>
   await withRetry(() =>
     sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
-      range: `${sheetName}!A:A`,
+      range: sheetRange(sheetName, "A:A"),
       valueInputOption: "USER_ENTERED",
       insertDataOption: "INSERT_ROWS",
       requestBody: { values },
@@ -129,7 +141,7 @@ async function findSheetRowNumber(
   idValue: string | number
 ): Promise<number> {
   const headers = SHEET_HEADERS[sheetName];
-  const range = `${sheetName}!A2:${colLetter(headers.length - 1)}`;
+  const range = sheetRange(sheetName, `A2:${colLetter(headers.length - 1)}`);
   const res = await withRetry(() =>
     sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range })
   );
@@ -160,7 +172,7 @@ export async function updateRow(
   if (rowNumber === -1) return null;
 
   // Read existing row so we only overwrite fields the caller provided.
-  const existingRange = `${sheetName}!A${rowNumber}:${colLetter(headers.length - 1)}${rowNumber}`;
+  const existingRange = sheetRange(sheetName, `A${rowNumber}:${colLetter(headers.length - 1)}${rowNumber}`);
   const existingRes = await withRetry(() =>
     sheets.spreadsheets.values.get({ spreadsheetId: SPREADSHEET_ID, range: existingRange })
   );
