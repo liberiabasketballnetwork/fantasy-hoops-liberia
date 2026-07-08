@@ -106,12 +106,28 @@ export default function AdminPage() {
     if (!rollbackWeekId) return;
     setRollingBack(true);
     try {
-      await api.post("/admin/calculation-backup/rollback", { week_id: rollbackWeekId });
-      setMessage("Last calculation successfully rolled back.");
+      const res = await api.post("/admin/calculation-backup/rollback", { week_id: rollbackWeekId });
       setRollbackWeekId(null);
+      setModal({
+        open: true,
+        type: "success",
+        title: "Weekly Rollback Completed",
+        message: "The gameweek has been restored to its pre-calculation state.",
+        details: [
+          "Leaderboard restored",
+          `${res.data.restored_player_prices_count ?? 0} player prices restored`,
+          `${res.data.removed_price_history_count ?? 0} price history rows removed`,
+        ],
+      });
       loadAll();
     } catch (err: any) {
-      setMessage(err?.response?.data?.error || "Failed to roll back the last calculation.");
+      setRollbackWeekId(null);
+      setModal({
+        open: true,
+        type: "error",
+        title: "Rollback Failed",
+        message: err?.response?.data?.error || "Failed to roll back the last calculation.",
+      });
     } finally {
       setRollingBack(false);
     }
@@ -230,6 +246,7 @@ export default function AdminPage() {
       {/* FHDS Loading overlays */}
       <LoadingOverlay visible={calculatingWeeklyScores} title="Calculating Weekly Scores..." message="Processing player statistics and updating the leaderboard." />
       <LoadingOverlay visible={updatingPrices} title="Updating Player Prices..." message="Adjusting fantasy prices based on this week's performance." />
+      <LoadingOverlay visible={rollingBack} title="Rolling Back..." message="Restoring leaderboard, player prices, and price history." />
 
       {/* FHDS Result modal */}
       <AppModal open={modal.open} type={modal.type} title={modal.title} message={modal.message} details={modal.details} confirmText="OK" onConfirm={closeModal} />

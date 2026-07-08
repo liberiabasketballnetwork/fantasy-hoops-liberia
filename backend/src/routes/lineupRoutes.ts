@@ -6,12 +6,9 @@ import {
   appendRow,
   getSheetData,
   findRowById,
-  getSetting,
 } from "../services/sheetsService";
 
 const router = express.Router();
-
-const MAX_PLAYERS_PER_TEAM = 2;
 
 const lineupSchema = z.object({
   week_id: z.string(),
@@ -34,46 +31,13 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
       return res.status(403).json({ error: "Submissions are locked for this gameweek" });
     }
 
-    // Enforce the salary cap server-side too (if enabled) — the budget UI is a
-    // convenience, not the source of truth, so a direct API call can't bypass it.
-    const allPlayers = await getSheetData("Players");
-    const selectedPlayers = allPlayers.filter((p) => parsed.player_ids.includes(p.player_id));
-    if (selectedPlayers.length !== 5) {
-      return res.status(400).json({ error: "One or more selected players could not be found" });
-    }
-
-    const salaryCapEnabled = (await getSetting("salary_cap_enabled", "true")).toLowerCase() === "true";
-    if (salaryCapEnabled) {
-      const budgetCap = Number(await getSetting("budget_cap", "100"));
-      const totalCost = selectedPlayers.reduce((sum, p) => sum + Number(p.fantasy_price || 0), 0);
-      if (totalCost > budgetCap) {
-        return res.status(400).json({
-          error: `Lineup exceeds the ${budgetCap}-credit budget cap (this lineup costs ${totalCost}).`,
-        });
-      }
-    }
-
-    // Enforce max players per team server-side too - the UI is a convenience,
-    // not the source of truth, so a direct API call can't bypass this rule.
-    const teamCounts: Record<string, number> = {};
-    for (const p of selectedPlayers) {
-      if (p.team_id) {
-        teamCounts[p.team_id] = (teamCounts[p.team_id] || 0) + 1;
-      }
-    }
-    if (Object.values(teamCounts).some((count) => count > MAX_PLAYERS_PER_TEAM)) {
-      return res.status(400).json({
-        error: "Maximum 2 players allowed from the same team. Choose players from other teams.",
-      });
-    }
-
     // Prevent duplicate submissions in the same week
     const lineups = await getSheetData("User_Lineups");
     const existing = lineups.find(
       (l) => String(l.user_id) === String(req.user!.user_id) && String(l.week_id) === String(parsed.week_id)
     );
     if (existing) {
-      return res.status(409).json({ error: "You have already submitted your lineup for this week." });
+      return res.status(409).json({ error: "You have already submitted a lineup for this gameweek" });
     }
 
     const lineup_id = uuidv4();

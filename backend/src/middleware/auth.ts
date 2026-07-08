@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import jwt from "jsonwebtoken";
 
 export interface AuthRequest extends Request {
-  user?: { user_id: string; email?: string; phone?: string; isAdmin?: boolean };
+  user?: { user_id: string; email: string; isAdmin?: boolean };
 }
 
 export function authenticate(req: AuthRequest, res: Response, next: NextFunction) {

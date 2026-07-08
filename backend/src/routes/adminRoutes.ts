@@ -17,100 +17,54 @@ import {
 import { logAdminAction } from "../services/adminActionLogger";
 
 const router = express.Router();
-
 router.use(authenticate, requireAdmin);
 
-// ---------- Settings ----------
+// Settings
 router.get("/settings", async (_req, res) => {
   try {
-    const salaryCapEnabled = await getSetting("salary_cap_enabled", "true");
-    const budgetCap = await getSetting("budget_cap", "100");
-    res.json({
-      salary_cap_enabled: salaryCapEnabled.toLowerCase() === "true",
-      budget_cap: Number(budgetCap),
-    });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch settings" });
-  }
+    const salary_cap_enabled = (await getSetting("salary_cap_enabled", "true")).toLowerCase() === "true";
+    const budget_cap = Number(await getSetting("budget_cap", "100"));
+    res.json({ salary_cap_enabled, budget_cap });
+  } catch (err) { res.status(500).json({ error: "Failed to fetch settings" }); }
 });
 
 router.post("/settings", async (req, res) => {
   try {
-    const schema = z.object({
-      salary_cap_enabled: z.boolean().optional(),
-      budget_cap: z.number().optional(),
-    });
-    const data = schema.parse(req.body);
-
-    if (data.salary_cap_enabled !== undefined) {
-      await setSetting("salary_cap_enabled", String(data.salary_cap_enabled));
-    }
-    if (data.budget_cap !== undefined) {
-      await setSetting("budget_cap", String(data.budget_cap));
-    }
-
+    const { salary_cap_enabled, budget_cap } = req.body;
+    if (salary_cap_enabled !== undefined) await setSetting("salary_cap_enabled", String(salary_cap_enabled));
+    if (budget_cap !== undefined) await setSetting("budget_cap", String(budget_cap));
     res.json({ message: "Settings updated" });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to update settings", details: err.errors || err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to update settings" }); }
 });
 
-// ---------- Teams ----------
+// Teams
 router.post("/add-team", async (req, res) => {
   try {
-    const schema = z.object({
-      team_name: z.string().min(1),
-      division: z.string().optional().default(""),
-      logo_url: z.string().optional().default(""),
-    });
-    const data = schema.parse(req.body);
-    const team = {
-      team_id: uuidv4(),
-      ...data,
-      created_at: new Date().toISOString(),
-    };
+    const { team_name, division } = req.body;
+    if (!team_name) return res.status(400).json({ error: "team_name is required" });
+    const team = { team_id: uuidv4(), team_name, division: division || "", logo_url: "", created_at: new Date().toISOString() };
     await appendRow("Teams", team);
     res.status(201).json({ team });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to add team", details: err.errors || err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to add team" }); }
 });
 
-// ---------- Players ----------
+// Players
 router.post("/add-player", async (req, res) => {
   try {
-    const schema = z.object({
-      full_name: z.string().min(1),
-      team_id: z.string(),
-      position: z.string(),
-      fantasy_price: z.number().optional().default(0),
-      status: z.string().optional().default("active"),
-      average_points: z.number().optional().default(0),
-      average_rebounds: z.number().optional().default(0),
-      average_assists: z.number().optional().default(0),
-      photo_url: z.string().optional().default(""),
-    });
-    const data = schema.parse(req.body);
-    const player = {
-      player_id: uuidv4(),
-      ...data,
-      created_at: new Date().toISOString(),
-    };
+    const { full_name, team_id, position, fantasy_price, status } = req.body;
+    if (!full_name || !team_id) return res.status(400).json({ error: "full_name and team_id are required" });
+    const player = { player_id: uuidv4(), full_name, team_id, position: position || "PG", fantasy_price: fantasy_price || 6, status: status || "active", games_played: 0, average_points: 0, average_rebounds: 0, average_assists: 0, photo_url: "", import_alias: "", source: "admin", created_at: new Date().toISOString() };
     await appendRow("Players", player);
     res.status(201).json({ player });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to add player", details: err.errors || err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to add player" }); }
 });
 
-router.put("/edit-player/:id", async (req, res) => {
+router.put("/players/:id", async (req, res) => {
   try {
     const updated = await updateRow("Players", "player_id", req.params.id, req.body);
     if (!updated) return res.status(404).json({ error: "Player not found" });
     res.json({ player: updated });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to update player" });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to update player" }); }
 });
 
 router.delete("/delete-player/:id", async (req, res) => {
@@ -118,43 +72,27 @@ router.delete("/delete-player/:id", async (req, res) => {
     const ok = await deleteRow("Players", "player_id", req.params.id);
     if (!ok) return res.status(404).json({ error: "Player not found" });
     res.json({ message: "Player deleted" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete player" });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to delete player" }); }
 });
 
-// ---------- Gameweeks ----------
+// Weeks
 router.post("/create-week", async (req, res) => {
   try {
-    const schema = z.object({
-      start_date: z.string(),
-      end_date: z.string(),
-      submission_deadline: z.string(),
-    });
-    const data = schema.parse(req.body);
-    const week = {
-      week_id: uuidv4(),
-      ...data,
-      is_locked: "FALSE",
-      created_at: new Date().toISOString(),
-    };
+    const { start_date, end_date, submission_deadline } = req.body;
+    if (!start_date || !end_date || !submission_deadline) return res.status(400).json({ error: "start_date, end_date, and submission_deadline are required" });
+    const week = { week_id: uuidv4(), start_date, end_date, submission_deadline, is_locked: "FALSE", scores_calculated: "FALSE", prices_updated: "FALSE", created_at: new Date().toISOString() };
     await appendRow("Weekly_Gameweek", week);
     res.status(201).json({ week });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to create week", details: err.errors || err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to create week" }); }
 });
 
 router.post("/lock-week", async (req, res) => {
   try {
     const { week_id } = req.body;
     if (!week_id) return res.status(400).json({ error: "week_id is required" });
-    const week = await lockWeekFn(week_id);
-    if (!week) return res.status(404).json({ error: "Week not found" });
-    res.json({ week });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to lock week" });
-  }
+    await lockWeekFn(week_id);
+    res.json({ message: "Week locked" });
+  } catch (err) { res.status(500).json({ error: "Failed to lock week" }); }
 });
 
 router.post("/reset-week", async (req: AuthRequest, res) => {
@@ -162,177 +100,79 @@ router.post("/reset-week", async (req: AuthRequest, res) => {
     const { week_id } = req.body;
     if (!week_id) return res.status(400).json({ error: "week_id is required" });
     await resetWeekFn(week_id);
-
-    // TASK 5: audit log.
-    await logAdminAction({
-      admin_id: req.user?.user_id || "admin",
-      action_type: "RESET_WEEK",
-      entity_type: "WEEK",
-      entity_id: week_id,
-      details: "Week reset completed",
-      status: "success",
-    });
-
+    await logAdminAction({ admin_id: req.user?.user_id || "admin", action_type: "RESET_WEEK", entity_type: "WEEK", entity_id: week_id, details: "Week reset completed", status: "success" });
     res.json({ message: "Week reset successfully" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to reset week" });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to reset week" }); }
 });
 
-// ---------- Games & Stats ----------
+// Games
 router.post("/add-game", async (req, res) => {
   try {
-    const schema = z.object({
-      home_team: z.string(),
-      away_team: z.string(),
-      game_date: z.string(),
-      status: z.string().optional().default("scheduled"),
-    });
+    const schema = z.object({ home_team: z.string(), away_team: z.string(), game_date: z.string(), status: z.string().optional().default("scheduled") });
     const data = schema.parse(req.body);
     const game = { game_id: uuidv4(), ...data };
     await appendRow("Games", game);
     res.status(201).json({ game });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to add game", details: err.errors || err.message });
-  }
+  } catch (err: any) { res.status(400).json({ error: "Failed to add game", details: err.errors || err.message }); }
 });
 
-// ---------- Emergency Fixture Override ----------
-// Allows admin to add a missing game to a locked week WITHOUT changing
-// is_locked. Users remain unable to submit/edit lineups. This exists
-// solely to correct scheduling mistakes made before lock time.
 router.post("/force-add-game", async (req: AuthRequest, res) => {
   try {
-    const schema = z.object({
-      home_team: z.string().min(1),
-      away_team: z.string().min(1),
-      game_date: z.string().min(1),
-      week_id: z.string().min(1),
-      status: z.string().optional().default("scheduled"),
-    });
+    const schema = z.object({ home_team: z.string().min(1), away_team: z.string().min(1), game_date: z.string().min(1), week_id: z.string().min(1), status: z.string().optional().default("scheduled") });
     const data = schema.parse(req.body);
-
-    // Verify the referenced week exists.
     const week = await getSheetData("Weekly_Gameweek");
     const targetWeek = week.find((w) => String(w.week_id) === String(data.week_id));
-    if (!targetWeek) {
-      return res.status(404).json({ error: "Gameweek not found." });
-    }
-
-    // Confirm the week is actually locked — this route only makes sense
-    // as an override when is_locked is TRUE. If the week isn't locked,
-    // use the normal /add-game route instead.
-    if (String(targetWeek.is_locked).toUpperCase() !== "TRUE") {
-      return res.status(400).json({
-        error: "This week is not locked. Use the normal Add Game route instead.",
-      });
-    }
-
-    // Add the game. is_locked is NOT changed — user lock is preserved.
-    const { week_id: _weekId, ...gameData } = data;
+    if (!targetWeek) return res.status(404).json({ error: "Gameweek not found." });
+    if (String(targetWeek.is_locked).toUpperCase() !== "TRUE") return res.status(400).json({ error: "This week is not locked. Use the normal Add Game route instead." });
+    const { week_id: _w, ...gameData } = data;
     const game = { game_id: uuidv4(), ...gameData };
     await appendRow("Games", game);
-
-    // TASK 5: audit log.
-    await logAdminAction({
-      admin_id: req.user?.user_id || "admin",
-      action_type: "FORCE_ADD_GAME",
-      entity_type: "GAME",
-      entity_id: game.game_id,
-      details: `Game added after week lock via admin override: ${data.home_team} vs ${data.away_team} on ${data.game_date} (week: ${data.week_id})`,
-      status: "success",
-    });
-
-    res.status(201).json({
-      game,
-      message: "Game added successfully via admin override. Week remains locked for users.",
-    });
+    await logAdminAction({ admin_id: req.user?.user_id || "admin", action_type: "FORCE_ADD_GAME", entity_type: "GAME", entity_id: game.game_id, details: `Game added after week lock: ${data.home_team} vs ${data.away_team} on ${data.game_date}`, status: "success" });
+    res.status(201).json({ game, message: "Game added successfully via admin override. Week remains locked for users." });
   } catch (err: any) {
-    if (err.name === "ZodError") {
-      return res.status(400).json({ error: "Invalid input", details: err.errors });
-    }
-    console.error("Force add game error:", err);
+    if (err.name === "ZodError") return res.status(400).json({ error: "Invalid input", details: err.errors });
     res.status(500).json({ error: "Failed to add game via override" });
   }
 });
 
+// Stats
 router.post("/input-stats", async (req, res) => {
   try {
-    const schema = z.object({
-      game_id: z.string(),
-      player_id: z.string(),
-      points: z.number().default(0),
-      rebounds: z.number().default(0),
-      assists: z.number().default(0),
-      steals: z.number().default(0),
-      blocks: z.number().default(0),
-      turnovers: z.number().default(0),
-      minutes_played: z.number().default(0),
-    });
-    const data = schema.parse(req.body);
-    const stat = { stat_id: uuidv4(), ...data };
+    const { game_id, player_id, points, rebounds, assists, steals, blocks, turnovers, minutes_played } = req.body;
+    if (!game_id || !player_id) return res.status(400).json({ error: "game_id and player_id are required" });
+    const stat = { stat_id: uuidv4(), game_id, player_id, points: points || 0, rebounds: rebounds || 0, assists: assists || 0, steals: steals || 0, blocks: blocks || 0, turnovers: turnovers || 0, minutes_played: minutes_played || 0, fantasy_points: 0 };
     await appendRow("Player_Stats", stat);
     res.status(201).json({ stat });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to input stats", details: err.errors || err.message });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to add stat" }); }
 });
 
-// ---------- Selection Percentage ----------
-// GET /admin/selection-stats?week_id=...
-// Shows what % of managers (users who submitted a lineup that week) picked
-// each player. Helps admins (and eventually users) see herd behavior -
-// e.g. "Fedolph Marshall - Selected by 63% of managers."
-router.get("/selection-stats", async (req, res) => {
+// Selection stats
+router.get("/selection-stats", async (_req, res) => {
   try {
-    const weekId = req.query.week_id as string;
-    if (!weekId) return res.status(400).json({ error: "week_id is required" });
-
-    const [lineups, lineupPlayers, players] = await Promise.all([
-      getSheetData("User_Lineups"),
-      getSheetData("Lineup_Players"),
-      getSheetData("Players"),
-    ]);
-
-    const weekLineups = lineups.filter((l) => String(l.week_id) === String(weekId));
+    const weeks = await getSheetData("Weekly_Gameweek");
+    if (weeks.length === 0) return res.json({ total_managers: 0, stats: [] });
+    const latestWeek = weeks.sort((a, b) => new Date(b.start_date).getTime() - new Date(a.start_date).getTime())[0];
+    const [lineups, lineupPlayers, players] = await Promise.all([getSheetData("User_Lineups"), getSheetData("Lineup_Players"), getSheetData("Players")]);
+    const weekLineups = lineups.filter((l) => String(l.week_id) === String(latestWeek.week_id));
     const totalManagers = weekLineups.length;
     const lineupIds = new Set(weekLineups.map((l) => l.lineup_id));
-
     const counts: Record<string, number> = {};
-    for (const lp of lineupPlayers) {
-      if (lineupIds.has(lp.lineup_id)) {
-        counts[lp.player_id] = (counts[lp.player_id] || 0) + 1;
-      }
-    }
-
-    const stats = Object.entries(counts)
-      .map(([player_id, count]) => {
-        const player = players.find((p) => p.player_id === player_id);
-        return {
-          player_id,
-          full_name: player?.full_name || "Unknown player",
-          count,
-          percentage: totalManagers > 0 ? Math.round((count / totalManagers) * 100) : 0,
-        };
-      })
-      .sort((a, b) => b.percentage - a.percentage);
-
-    res.json({ total_managers: totalManagers, stats });
-  } catch (err) {
-    console.error("Get selection stats error:", err);
-    res.status(500).json({ error: "Failed to fetch selection stats" });
-  }
+    for (const lp of lineupPlayers) { if (lineupIds.has(lp.lineup_id)) counts[lp.player_id] = (counts[lp.player_id] || 0) + 1; }
+    const stats = Object.entries(counts).map(([player_id, count]) => {
+      const player = players.find((p) => p.player_id === player_id);
+      return { player_id, full_name: player?.full_name || "Unknown", count, percentage: totalManagers > 0 ? Math.round((count / totalManagers) * 100) : 0 };
+    }).sort((a, b) => b.percentage - a.percentage);
+    res.json({ week: latestWeek, total_managers: totalManagers, stats });
+  } catch (err) { res.status(500).json({ error: "Failed to fetch selection stats" }); }
 });
 
-// ---------- Users ----------
+// Users
 router.get("/users", async (_req, res) => {
   try {
     const users = await getSheetData("Users");
     const safeUsers = users.map(({ password_hash, ...rest }) => rest);
     res.json({ users: safeUsers });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch users" });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to fetch users" }); }
 });
 
 router.delete("/users/:id", async (req, res) => {
@@ -340,97 +180,47 @@ router.delete("/users/:id", async (req, res) => {
     const ok = await deleteRow("Users", "user_id", req.params.id);
     if (!ok) return res.status(404).json({ error: "User not found" });
     res.json({ message: "User deleted" });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to delete user" });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to delete user" }); }
 });
 
-// PATCH /admin/users/:id/display-name — admin edit with same validation rules.
 router.patch("/users/:id/display-name", async (req: AuthRequest, res) => {
   try {
     const { display_name } = req.body;
     if (!display_name) return res.status(400).json({ error: "display_name is required" });
-
     const { validateDisplayName, isDisplayNameTaken } = await import("../utils/displayNameUtils");
     const validation = validateDisplayName(display_name);
     if (!validation.valid) return res.status(400).json({ error: validation.error });
-
     const allUsers = await getSheetData("Users");
-    if (isDisplayNameTaken(validation.trimmed!, allUsers, req.params.id)) {
-      return res.status(409).json({
-        error: `The display name "${validation.trimmed}" is already taken.`,
-      });
-    }
-
-    const updated = await updateRow("Users", "user_id", req.params.id, {
-      display_name: validation.trimmed,
-    });
+    if (isDisplayNameTaken(validation.trimmed!, allUsers, req.params.id)) return res.status(409).json({ error: `The display name "${validation.trimmed}" is already taken.` });
+    const updated = await updateRow("Users", "user_id", req.params.id, { display_name: validation.trimmed });
     if (!updated) return res.status(404).json({ error: "User not found" });
-
     res.json({ message: "Display name updated.", display_name: validation.trimmed });
-  } catch (err) {
-    res.status(500).json({ error: "Failed to update display name" });
-  }
+  } catch (err) { res.status(500).json({ error: "Failed to update display name" }); }
 });
 
-// POST /admin/users/:id/reset-password
-// Generates a secure random 12-character temporary password using Node.js
-// crypto (never the frontend), hashes it with bcrypt, writes only the hash.
-// Returns the plaintext password ONCE for admin to relay to the user.
-// Never logs the password or hash - only the action and user_id.
 router.post("/users/:id/reset-password", async (req: AuthRequest, res) => {
   try {
     const allUsers = await getSheetData("Users");
     const user = allUsers.find((u) => u.user_id === req.params.id);
     if (!user) return res.status(404).json({ error: "User not found" });
-
-    // Generate a secure 12-character temporary password using crypto.
-    // Characters: uppercase, lowercase, digits — avoids ambiguous chars
-    // (0/O, 1/l/I) to make it easy to read back to a user over the phone.
     const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
     const randomBytes = crypto.randomBytes(12);
-    const tempPassword = Array.from(randomBytes)
-      .map((b) => CHARSET[b % CHARSET.length])
-      .join("");
-
+    const tempPassword = Array.from(randomBytes).map((b) => CHARSET[(b as number) % CHARSET.length]).join("");
     const password_hash = await bcrypt.hash(tempPassword, 10);
     await updateRow("Users", "user_id", req.params.id, { password_hash });
-
-    // Audit log - action only, never the password or hash.
-    await logAdminAction({
-      admin_id: req.user?.user_id || "admin",
-      action_type: "RESET_PASSWORD",
-      entity_type: "USER",
-      entity_id: req.params.id,
-      details: `Password reset for user ${user.display_name || user.full_name}`,
-      status: "success",
-    });
-
-    res.json({
-      message: "Password reset successfully.",
-      temp_password: tempPassword,
-    });
-  } catch (err) {
-    console.error("Reset password error:", err);
-    res.status(500).json({ error: "Failed to reset password" });
-  }
+    await logAdminAction({ admin_id: req.user?.user_id || "admin", action_type: "RESET_PASSWORD", entity_type: "USER", entity_id: req.params.id, details: `Password reset for user ${user.display_name || user.full_name}`, status: "success" });
+    res.json({ message: "Password reset successfully.", temp_password: tempPassword });
+  } catch (err) { res.status(500).json({ error: "Failed to reset password" }); }
 });
 
-// ---------- Sponsors ----------
+// Sponsors
 router.post("/add-sponsor", async (req, res) => {
   try {
-    const schema = z.object({
-      company_name: z.string(),
-      prize: z.string(),
-      week_id: z.string(),
-    });
-    const data = schema.parse(req.body);
-    const sponsor = { sponsor_id: uuidv4(), ...data };
-    await appendRow("Sponsors", sponsor);
-    res.status(201).json({ sponsor });
-  } catch (err: any) {
-    res.status(400).json({ error: "Failed to add sponsor", details: err.errors || err.message });
-  }
+    const { name, logo_url, website_url } = req.body;
+    if (!name) return res.status(400).json({ error: "name is required" });
+    await appendRow("Sponsors", { sponsor_id: uuidv4(), name, logo_url: logo_url || "", website_url: website_url || "", created_at: new Date().toISOString() });
+    res.status(201).json({ message: "Sponsor added" });
+  } catch (err) { res.status(500).json({ error: "Failed to add sponsor" }); }
 });
 
 export default router;
