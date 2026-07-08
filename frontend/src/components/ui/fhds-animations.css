@@ -1,0 +1,19 @@
+/* ─── Fantasy Hoops Design System v1.0 — Animations ───────
+   Add these keyframes to your globals.css (or @import this file).
+   Used by AppModal, ConfirmDialog, and ToastNotification.
+─────────────────────────────────────────────────────────── */
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes modalIn {
+  from { opacity: 0; transform: scale(0.92) translateY(8px); }
+  to   { opacity: 1; transform: scale(1)    translateY(0);   }
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateX(24px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
