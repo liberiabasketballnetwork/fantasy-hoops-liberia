@@ -9,3 +9,6 @@ export type { LoadingOverlayProps } from "./LoadingOverlay";
 
 export { ToastContainer, useToast } from "./ToastNotification";
 export type { Toast, ToastType } from "./ToastNotification";
+
+export { PriceBadge } from "./PriceBadge";
+export type { PriceBadgeProps, PriceTrend } from "./PriceBadge";

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { AppModal, LoadingOverlay } from "@/components/ui";
+import { AppModal, LoadingOverlay, PriceBadge } from "@/components/ui";
 
 const MAX_PLAYERS_PER_TEAM = 2;
 
@@ -212,6 +212,9 @@ export default function PlayersPage() {
           {salaryCapEnabled && <li>✓ Stay under {budgetCap} credits</li>}
           <li>✓ Select 1 Captain (double points)</li>
         </ul>
+        <p className="text-xs text-gray-500 mt-3">
+          Player prices update after every completed gameweek based on fantasy performance.
+        </p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -267,7 +270,15 @@ export default function PlayersPage() {
                   </div>
                 </div>
                 <div className="flex flex-col items-end gap-1">
-                  {salaryCapEnabled && <span className="text-xs font-bold text-court-orange">{price} cr</span>}
+                  {salaryCapEnabled && (
+                    <PriceBadge
+                      current_price={price}
+                      previous_price={p.previous_price}
+                      price_change={p.price_change}
+                      price_trend={p.price_trend}
+                      variant="inline"
+                    />
+                  )}
                   {isSelected && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setCaptain(p.player_id); }}

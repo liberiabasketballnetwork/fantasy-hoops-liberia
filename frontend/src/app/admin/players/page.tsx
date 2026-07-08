@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
+import { PriceBadge } from "@/components/ui";
 
 export default function AdminPlayersPage() {
   const { user, loading } = useRequireAdmin();
@@ -92,6 +93,7 @@ export default function AdminPlayersPage() {
               <th className="text-left p-3">PPG</th>
               <th className="text-left p-3">RPG</th>
               <th className="text-left p-3">APG</th>
+              <th className="text-right p-3">Price</th>
               <th className="p-3"></th>
             </tr>
           </thead>
@@ -103,6 +105,15 @@ export default function AdminPlayersPage() {
                 <td className="p-3">{p.average_points}</td>
                 <td className="p-3">{p.average_rebounds}</td>
                 <td className="p-3">{p.average_assists}</td>
+                <td className="p-3 text-right">
+                  <PriceBadge
+                    current_price={Number(p.current_price ?? p.fantasy_price ?? 0)}
+                    previous_price={p.previous_price}
+                    price_change={p.price_change}
+                    price_trend={p.price_trend}
+                    variant="inline"
+                  />
+                </td>
                 <td className="p-3 text-right">
                   <button onClick={() => deletePlayer(p.player_id)} className="text-red-400 text-xs">Delete</button>
                 </td>
