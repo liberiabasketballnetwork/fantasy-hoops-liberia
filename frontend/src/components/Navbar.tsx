@@ -11,6 +11,7 @@ export default function Navbar() {
   const links = [
     { href: "/dashboard", label: "Dashboard" },
     { href: "/players", label: "Players" },
+    { href: "/market", label: "Market" },
     { href: "/leaderboard", label: "Leaderboard" },
     { href: "/history", label: "History" },
     { href: "/sponsors", label: "Sponsors" },
