@@ -19,6 +19,7 @@ import calculationBackupRoutes from "./routes/calculationBackupRoutes";
 import weeklyScoreRoutes from "./routes/weeklyScoreRoutes";
 import priceAdjustmentRoutes from "./routes/priceAdjustmentRoutes";
 import marketRoutes from "./routes/marketRoutes";
+import reportRoutes from "./routes/reportRoutes";
 
 dotenv.config();
 
@@ -47,7 +48,8 @@ app.use("/admin", importRoutes);
 app.use("/admin", calculationBackupRoutes);
 app.use("/admin", weeklyScoreRoutes);
 app.use("/admin", priceAdjustmentRoutes);
-app.use("/", marketRoutes); // /market
+app.use("/", marketRoutes);    // /market
+app.use("/", reportRoutes);    // /reports/weekly/:weekId and /admin/reports/weekly/:weekId
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

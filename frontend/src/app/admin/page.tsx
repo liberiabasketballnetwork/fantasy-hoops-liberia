@@ -341,6 +341,12 @@ export default function AdminPage() {
                 >
                   {updatingPrices ? "Updating..." : "Update Player Prices"}
                 </button>
+                <a
+                  href={`/reports/${w.week_id}`}
+                  className="px-3 py-1 rounded bg-[#1f2733] text-xs inline-block"
+                >
+                  📋 View Report
+                </a>
                 <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
                 <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>
                 {String(w.is_locked).toUpperCase() === "TRUE" && (
