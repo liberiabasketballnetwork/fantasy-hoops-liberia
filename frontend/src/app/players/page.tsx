@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { AppModal, LoadingOverlay, PriceBadge } from "@/components/ui";
+import { AppModal, LoadingOverlay, PriceBadge, FormBadge, Last5Sparkline } from "@/components/ui";
 
 const MAX_PLAYERS_PER_TEAM = 2;
 
@@ -289,11 +289,29 @@ export default function PlayersPage() {
                   )}
                 </div>
               </div>
-              <div className="flex gap-3 mt-3 text-xs text-gray-400">
-                <span>PPG {p.average_points || 0}</span>
-                <span>RPG {p.average_rebounds || 0}</span>
-                <span>APG {p.average_assists || 0}</span>
+              <div className="flex items-center justify-between mt-3">
+                <div className="flex flex-col gap-0.5">
+                  <div className="flex items-center gap-2">
+                    <FormBadge form={p.form ?? "cold"} variant="pill" />
+                    <span className="text-xs text-gray-500">
+                      {p.games_played ?? 0} GP
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-gray-400 mt-1">
+                    <span title="Season average fantasy points">
+                      Avg {(p.season_average_fantasy_points ?? 0).toFixed(1)}
+                    </span>
+                    <span title="Fantasy points per credit spent">
+                      Val {(p.value_per_credit ?? 0).toFixed(2)}/cr
+                    </span>
+                  </div>
+                </div>
               </div>
+              {p.last_5_fantasy_scores?.length > 0 && (
+                <div className="mt-3 border-t border-[#1f2733] pt-3">
+                  <Last5Sparkline scores={p.last_5_fantasy_scores} />
+                </div>
+              )}
             </div>
           );
         })}
