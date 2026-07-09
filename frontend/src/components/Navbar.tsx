@@ -15,6 +15,8 @@ export default function Navbar() {
     { href: "/compare", label: "Compare" },
     { href: "/team-advisor", label: "Advisor" },
     { href: "/planner", label: "Planner" },
+    { href: "/optimizer", label: "Optimizer" },
+    { href: "/optimizer", label: "Optimizer" },
     { href: "/leaderboard", label: "Leaderboard" },
     { href: "/history", label: "History" },
     { href: "/sponsors", label: "Sponsors" },
