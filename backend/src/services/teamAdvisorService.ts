@@ -73,7 +73,7 @@ const FORM_SCORE: Record<FormRating, number> = {
   cold: 25,
 };
 
-function calcTeamHealth(
+export function calcTeamHealth(
   lineup: EnrichedPlayer[],
   budgetCap: number
 ): TeamHealth {
@@ -110,7 +110,7 @@ function calcTeamHealth(
 
 // ─── Captain selection ───────────────────────────────────────────────────────
 
-function suggestCaptain(lineup: EnrichedPlayer[]): EnrichedPlayer {
+export function suggestCaptain(lineup: EnrichedPlayer[]): EnrichedPlayer {
   // Priority: HOT form > GOOD form > highest last_5_average > season average
   const formOrder: FormRating[] = ["hot", "good", "average", "cold"];
   for (const form of formOrder) {

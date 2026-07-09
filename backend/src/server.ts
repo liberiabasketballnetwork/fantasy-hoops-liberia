@@ -22,6 +22,7 @@ import marketRoutes from "./routes/marketRoutes";
 import reportRoutes from "./routes/reportRoutes";
 import teamAdvisorRoutes from "./routes/teamAdvisorRoutes";
 import playerComparisonRoutes from "./routes/playerComparisonRoutes";
+import teamPlannerRoutes from "./routes/teamPlannerRoutes";
 
 dotenv.config();
 
@@ -54,6 +55,7 @@ app.use("/", marketRoutes);    // /market
 app.use("/", reportRoutes);       // /reports/weekly/:weekId
 app.use("/", teamAdvisorRoutes);      // /team-advisor
 app.use("/", playerComparisonRoutes); // /player-comparison
+app.use("/", teamPlannerRoutes);      // /team-planner/simulate
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
