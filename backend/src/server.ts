@@ -21,6 +21,7 @@ import priceAdjustmentRoutes from "./routes/priceAdjustmentRoutes";
 import marketRoutes from "./routes/marketRoutes";
 import reportRoutes from "./routes/reportRoutes";
 import teamAdvisorRoutes from "./routes/teamAdvisorRoutes";
+import playerComparisonRoutes from "./routes/playerComparisonRoutes";
 
 dotenv.config();
 
@@ -51,7 +52,8 @@ app.use("/admin", weeklyScoreRoutes);
 app.use("/admin", priceAdjustmentRoutes);
 app.use("/", marketRoutes);    // /market
 app.use("/", reportRoutes);       // /reports/weekly/:weekId
-app.use("/", teamAdvisorRoutes);  // /team-advisor
+app.use("/", teamAdvisorRoutes);      // /team-advisor
+app.use("/", playerComparisonRoutes); // /player-comparison
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

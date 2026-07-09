@@ -12,6 +12,7 @@ export default function Navbar() {
     { href: "/dashboard", label: "Dashboard" },
     { href: "/players", label: "Players" },
     { href: "/market", label: "Market" },
+    { href: "/compare", label: "Compare" },
     { href: "/team-advisor", label: "Advisor" },
     { href: "/leaderboard", label: "Leaderboard" },
     { href: "/history", label: "History" },
