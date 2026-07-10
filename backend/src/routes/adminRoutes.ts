@@ -59,6 +59,45 @@ router.post("/add-player", async (req, res) => {
   } catch (err) { res.status(500).json({ error: "Failed to add player" }); }
 });
 
+const POSITIONS = ["PG", "SG", "SF", "PF", "C"] as const;
+
+router.patch("/players/:id", async (req, res) => {
+  try {
+    // Only these fields may be updated
+    const { full_name, team_id, position, fantasy_price, status } = req.body;
+    const updates: Record<string, any> = {};
+
+    if (full_name !== undefined) {
+      if (!String(full_name).trim()) return res.status(400).json({ error: "Player name is required." });
+      updates.full_name = String(full_name).trim();
+    }
+    if (team_id !== undefined) updates.team_id = team_id;
+    if (position !== undefined) {
+      if (!(POSITIONS as readonly string[]).includes(position))
+        return res.status(400).json({ error: `Position must be one of: ${POSITIONS.join(", ")}.` });
+      updates.position = position;
+    }
+    if (fantasy_price !== undefined) {
+      const price = Number(fantasy_price);
+      if (isNaN(price) || price < 5 || price > 30)
+        return res.status(400).json({ error: "Fantasy price must be between 5 and 30." });
+      updates.fantasy_price = price;
+    }
+    if (status !== undefined) {
+      if (!["active", "inactive"].includes(String(status).toLowerCase()))
+        return res.status(400).json({ error: "Status must be 'active' or 'inactive'." });
+      updates.status = String(status).toLowerCase();
+    }
+
+    if (Object.keys(updates).length === 0)
+      return res.status(400).json({ error: "No valid fields provided to update." });
+
+    const updated = await updateRow("Players", "player_id", req.params.id, updates);
+    if (!updated) return res.status(404).json({ error: "Player not found." });
+    res.json({ player: updated, message: "Player updated successfully." });
+  } catch (err) { res.status(500).json({ error: "Failed to update player." }); }
+});
+
 router.put("/players/:id", async (req, res) => {
   try {
     const updated = await updateRow("Players", "player_id", req.params.id, req.body);
