@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { api } from "@/lib/api";
@@ -14,6 +14,13 @@ interface ChangePasswordForm {
   confirm_password: string;
 }
 
+interface AchievementWithBadge {
+  achievement_id: string;
+  badge_name: string;
+  icon: string;
+  earned_at: string;
+}
+
 export default function ProfilePage() {
   const { user, loading, login, token } = useAuth();
 
@@ -25,6 +32,9 @@ export default function ProfilePage() {
   const { register: regPW, handleSubmit: handlePW, reset: resetPW, formState: { errors: pwErrors } } = useForm<ChangePasswordForm>();
   const [savingPW, setSavingPW] = useState(false);
 
+  // Recent achievements
+  const [recentBadges, setRecentBadges] = useState<AchievementWithBadge[]>([]);
+
   // FHDS modal
   const [modal, setModal] = useState<{
     open: boolean;
@@ -33,6 +43,14 @@ export default function ProfilePage() {
     message: string;
   }>({ open: false, type: "success", title: "", message: "" });
   const closeModal = () => setModal((m) => ({ ...m, open: false }));
+
+  useEffect(() => {
+    if (!loading && user) {
+      api.get("/achievements").then((res) => {
+        setRecentBadges((res.data.earned || []).slice(0, 6));
+      }).catch(() => {});
+    }
+  }, [user, loading]);
 
   if (loading) return null;
 
@@ -93,6 +111,7 @@ export default function ProfilePage() {
         onConfirm={closeModal}
       />
 
+      {/* Profile details */}
       <div className="card p-6">
         <h1 className="text-2xl font-bold mb-4">My Profile</h1>
         <div className="flex flex-col gap-4 text-sm">
@@ -139,6 +158,39 @@ export default function ProfilePage() {
         </div>
       </div>
 
+      {/* Achievements strip */}
+      {recentBadges.length > 0 && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-bold">🏅 My Badges</h2>
+            <Link href="/achievements" className="text-xs text-court-orange">View all →</Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {recentBadges.map((b) => (
+              <div
+                key={b.achievement_id}
+                className="flex items-center gap-1.5 bg-[#0b0f14] border border-[#1f2733] rounded-lg px-3 py-1.5"
+                title={b.badge_name}
+              >
+                <span className="text-lg">{b.icon}</span>
+                <span className="text-xs font-medium text-gray-300">{b.badge_name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {recentBadges.length === 0 && (
+        <div className="card p-5 flex items-center justify-between">
+          <div>
+            <p className="font-bold text-sm">🏅 No Badges Yet</p>
+            <p className="text-xs text-gray-400 mt-0.5">Compete to earn your first achievement.</p>
+          </div>
+          <Link href="/achievements" className="text-xs text-court-orange">Browse →</Link>
+        </div>
+      )}
+
+      {/* Change password */}
       <div className="card p-6">
         <h2 className="font-bold mb-4">Change Password</h2>
         <form onSubmit={handlePW(onChangePassword)} className="flex flex-col gap-3">
@@ -148,15 +200,8 @@ export default function ProfilePage() {
           </div>
           <div>
             <input
-              type="password"
-              className="input-field"
-              placeholder="New password"
-              {...regPW("new_password", {
-                required: true,
-                minLength: 8,
-                maxLength: 64,
-                pattern: /^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9]).+$/,
-              })}
+              type="password" className="input-field" placeholder="New password"
+              {...regPW("new_password", { required: true, minLength: 8, maxLength: 64, pattern: /^(?=.*[A-Z])(?=.*[a-z])(?=.*[0-9]).+$/ })}
             />
             {pwErrors.new_password?.type === "minLength" && <p className="text-red-400 text-xs mt-1">Minimum 8 characters</p>}
             {pwErrors.new_password?.type === "maxLength" && <p className="text-red-400 text-xs mt-1">Maximum 64 characters</p>}
@@ -174,4 +219,11 @@ export default function ProfilePage() {
       </div>
     </div>
   );
+}
+
+interface DisplayNameForm { display_name: string; }
+interface ChangePasswordForm {
+  current_password: string;
+  new_password: string;
+  confirm_password: string;
 }
