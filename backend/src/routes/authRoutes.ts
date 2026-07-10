@@ -39,8 +39,10 @@ router.post("/login", async (req, res) => {
       const token = jwt.sign({ user_id: "admin", email: parsed.email, isAdmin: true }, process.env.JWT_SECRET as string, { expiresIn: process.env.JWT_EXPIRES_IN as any || "7d" });
       return res.json({ token, user: { user_id: "admin", full_name: "Admin", display_name: "Admin", email: parsed.email, isAdmin: true } });
     }
-    if (!parsed.phone) return res.status(401).json({ error: "Invalid phone number or password" });
-    const normalizedLoginPhone = normalizePhoneNumber(parsed.phone);
+    const rawIdentifier = parsed.phone ?? parsed.email ?? "";
+    console.log("[LOGIN]", { identifierType: rawIdentifier.includes("@") ? "email-field-phone" : "phone" });
+    if (!rawIdentifier) return res.status(401).json({ error: "Invalid phone number or password" });
+    const normalizedLoginPhone = normalizePhoneNumber(rawIdentifier);
     const allUsers = await getSheetData("Users");
     const user = allUsers.find((u) => normalizePhoneNumber(stripApostrophe(String(u.phone || ""))) === normalizedLoginPhone);
     if (!user) return res.status(401).json({ error: "Invalid phone number or password" });
