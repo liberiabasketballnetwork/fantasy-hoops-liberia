@@ -24,6 +24,7 @@ import teamAdvisorRoutes from "./routes/teamAdvisorRoutes";
 import playerComparisonRoutes from "./routes/playerComparisonRoutes";
 import teamPlannerRoutes from "./routes/teamPlannerRoutes";
 import teamOptimizerRoutes from "./routes/teamOptimizerRoutes";
+import leagueRoutes from "./routes/leagueRoutes";
 
 dotenv.config();
 
@@ -58,6 +59,7 @@ app.use("/", teamAdvisorRoutes);      // /team-advisor
 app.use("/", playerComparisonRoutes); // /player-comparison
 app.use("/", teamPlannerRoutes);      // /team-planner/simulate
 app.use("/", teamOptimizerRoutes);    // /team-optimizer
+app.use("/", leagueRoutes);           // /leagues/*
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

@@ -17,6 +17,8 @@ export const SHEET_NAMES = {
   CALCULATION_BACKUP: "Calculation_Backup",
   ADMIN_ACTIONS_LOG: "Admin_Actions_Log",
   PRICE_HISTORY: "Price_History",
+  LEAGUES: "Leagues",
+  LEAGUE_MEMBERS: "League_Members",
 } as const;
 
 export const SHEET_HEADERS: Record<string, string[]> = {
@@ -36,4 +38,6 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.CALCULATION_BACKUP]: ["backup_id","week_id","backup_type","backup_data","created_at"],
   [SHEET_NAMES.ADMIN_ACTIONS_LOG]: ["action_id","admin_id","action_type","entity_type","entity_id","details","status","created_at"],
   [SHEET_NAMES.PRICE_HISTORY]: ["price_history_id","player_id","week_id","old_price","new_price","weekly_fantasy_points","created_at"],
+  [SHEET_NAMES.LEAGUES]: ["league_id","league_name","description","invite_code","owner_user_id","max_members","visibility","status","created_at"],
+  [SHEET_NAMES.LEAGUE_MEMBERS]: ["league_member_id","league_id","user_id","joined_at"],
 };

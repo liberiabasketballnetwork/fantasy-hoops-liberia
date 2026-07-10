@@ -49,13 +49,8 @@ const NAV_GROUPS: NavGroup[] = [
     icon: "🏆",
     items: [
       { href: "/leaderboard", label: "Leaderboard"   },
+      { href: "/leagues",     label: "Mini Leagues"  },
       { href: "/history",     label: "History"       },
-      {
-        href: "/mini-leagues",
-        label: "Mini Leagues",
-        disabled: true,
-        badge: "Soon",
-      },
     ],
   },
   {
