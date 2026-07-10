@@ -347,6 +347,19 @@ export default function AdminPage() {
                 >
                   📋 View Report
                 </a>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`);
+                      setMessage(`✅ ${res.data.message}`);
+                    } catch (err: any) {
+                      setMessage(err?.response?.data?.error || "Failed to evaluate achievements.");
+                    }
+                  }}
+                  className="px-3 py-1 rounded bg-[#1f2733] text-xs"
+                >
+                  🏅 Evaluate Badges
+                </button>
                 <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
                 <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>
                 {String(w.is_locked).toUpperCase() === "TRUE" && (

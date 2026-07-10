@@ -19,6 +19,7 @@ export const SHEET_NAMES = {
   PRICE_HISTORY: "Price_History",
   LEAGUES: "Leagues",
   LEAGUE_MEMBERS: "League_Members",
+  ACHIEVEMENTS: "Achievements",
 } as const;
 
 export const SHEET_HEADERS: Record<string, string[]> = {
@@ -40,4 +41,5 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.PRICE_HISTORY]: ["price_history_id","player_id","week_id","old_price","new_price","weekly_fantasy_points","created_at"],
   [SHEET_NAMES.LEAGUES]: ["league_id","league_name","description","invite_code","owner_user_id","max_members","visibility","status","created_at"],
   [SHEET_NAMES.LEAGUE_MEMBERS]: ["league_member_id","league_id","user_id","joined_at"],
+  [SHEET_NAMES.ACHIEVEMENTS]: ["achievement_id","user_id","badge_key","badge_name","description","earned_at","week_id","metadata"],
 };
