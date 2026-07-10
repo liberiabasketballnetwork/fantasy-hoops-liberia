@@ -25,7 +25,13 @@ export default function LoginPage() {
     try {
       const res = await api.post("/login", data);
       login(res.data.token, res.data.user);
-      router.push(res.data.user.isAdmin ? "/admin" : "/dashboard");
+      if (res.data.user.isAdmin) {
+        router.push("/admin");
+      } else if (!res.data.user.display_name) {
+        router.push("/choose-display-name");
+      } else {
+        router.push("/dashboard");
+      }
     } catch (err: any) {
       setError(err?.response?.data?.error || "Login failed. Check your credentials.");
     } finally {
@@ -35,28 +41,64 @@ export default function LoginPage() {
 
   return (
     <div className="max-w-md mx-auto card p-6">
-      <h1 className="text-2xl font-bold mb-1">Welcome back</h1>
-      <p className="text-sm text-gray-400 mb-5">Log in to manage your fantasy lineup.</p>
+      <h1 className="text-2xl font-bold mb-1">Welcome Back</h1>
+      <p className="text-sm text-gray-400 mb-5">
+        Sign in using the phone number you registered with.
+      </p>
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
-        <input className="input-field" type="email" placeholder="Email address" {...register("email", { required: true })} />
-        <input className="input-field" type="password" placeholder="Password" {...register("password", { required: true })} />
+        <div>
+          <label htmlFor="login-phone" className="text-xs text-gray-400 mb-1 block">
+            Phone Number
+          </label>
+          <input
+            id="login-phone"
+            className="input-field"
+            type="text"
+            placeholder="e.g. 0771234567"
+            autoComplete="username"
+            aria-label="Phone number or email address"
+            {...register("email", { required: true })}
+          />
+        </div>
 
-        {error && <p className="text-red-400 text-sm">{error}</p>}
+        <div>
+          <label htmlFor="login-password" className="text-xs text-gray-400 mb-1 block">
+            Password
+          </label>
+          <input
+            id="login-password"
+            className="input-field"
+            type="password"
+            placeholder="Password"
+            autoComplete="current-password"
+            aria-label="Password"
+            {...register("password", { required: true })}
+          />
+        </div>
+
+        {error && <p className="text-red-400 text-sm" role="alert">{error}</p>}
 
         <button type="submit" disabled={loading} className="btn-primary w-full">
-          {loading ? "Logging in..." : "Login"}
+          {loading ? "Signing in..." : "Sign In"}
         </button>
       </form>
+
+      {/* Login Tips — FHDS card, replaces old admin note */}
+      <div className="card p-4 mt-4 border-[#2a3441]">
+        <p className="text-xs font-semibold text-gray-300 mb-2">💡 Login Tips</p>
+        <ul className="text-xs text-gray-400 flex flex-col gap-1.5">
+          <li>• Use the phone number you registered with.</li>
+          <li>• Enter it in local format (example: 0771234567).</li>
+          <li>• Administrators may also sign in using their email address.</li>
+        </ul>
+      </div>
 
       <p className="text-sm text-gray-400 mt-4">
         No account yet?{" "}
         <Link href="/register" className="text-court-orange">
           Register free
         </Link>
-      </p>
-      <p className="text-xs text-gray-500 mt-2">
-        Admin? Log in with your admin email here — you&apos;ll be redirected automatically.
       </p>
     </div>
   );
