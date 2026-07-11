@@ -59,7 +59,7 @@ export default function AdminPage() {
       const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
         api.get("/leaderboard").catch(() => ({ data: { week: null } })),
         api.get("/teams").catch(() => ({ data: { teams: [] } })),
-        api.get("/admin/users").catch(() => ({ data: { users: [] } })),
+        api.get("/admin/users").catch((err: any) => { console.error("admin/users error:", err?.response?.status, err?.response?.data); return { data: { users: [] } }; }),
         api.get("/admin/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
       ]);
       setTeams(teamsRes.data.teams || []);
