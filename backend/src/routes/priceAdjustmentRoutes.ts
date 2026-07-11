@@ -1,7 +1,9 @@
 import express from "express";
+import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { adjustPlayerPrices, PriceAdjustmentError } from "../services/priceAdjustmentService";
+import { dispatchPricingNotifications } from "../services/pricingNotificationProducer";
 
 const router = express.Router();
 router.use(authenticate, requireAdmin);
@@ -12,6 +14,13 @@ router.post("/update-player-prices", async (req: AuthRequest, res) => {
     console.log("[priceAdjustmentRoutes] /update-player-prices called, body:", req.body);
     const { week_id } = weekIdSchema.parse(req.body);
     const result = await adjustPlayerPrices(week_id, req.user?.user_id || "admin");
+
+    // Fire-and-forget: pricing data is already committed — notify affected users.
+    const workflow_id = uuidv4();
+    dispatchPricingNotifications(result, week_id, workflow_id).catch((err) => {
+      console.error("[priceAdjustmentRoutes] Pricing producer error:", err);
+    });
+
     res.json({ message: `Player prices updated: ${result.updated_count} changed, ${result.no_change_count} unchanged, ${result.ignored_count} had no stats this week.`, ...result });
   } catch (err: any) {
     console.error("[priceAdjustmentRoutes] error:", err?.message || err);
