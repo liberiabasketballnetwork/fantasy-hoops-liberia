@@ -58,8 +58,8 @@ export default function AdminPage() {
     try {
       const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
         api.get("/leaderboard").catch(() => ({ data: { week: null } })),
-        api.get("/teams"),
-        api.get("/admin/users"),
+        api.get("/teams").catch(() => ({ data: { teams: [] } })),
+        api.get("/admin/users").catch(() => ({ data: { users: [] } })),
         api.get("/admin/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
       ]);
       setTeams(teamsRes.data.teams || []);
