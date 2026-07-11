@@ -9,10 +9,9 @@ import {
 } from "../services/leagueService";
 
 const router = express.Router();
-router.use(authenticate);
 
 // POST /leagues — create a new league
-router.post("/leagues", async (req: AuthRequest, res) => {
+router.post("/leagues", authenticate, async (req: AuthRequest, res) => {
   try {
     const { league_name, description } = req.body;
     const league = await createLeague(req.user!.user_id, league_name, description);
@@ -23,7 +22,7 @@ router.post("/leagues", async (req: AuthRequest, res) => {
 });
 
 // POST /leagues/join — join via invite code
-router.post("/leagues/join", async (req: AuthRequest, res) => {
+router.post("/leagues/join", authenticate, async (req: AuthRequest, res) => {
   try {
     const { invite_code } = req.body;
     if (!invite_code) return res.status(400).json({ error: "invite_code is required." });
@@ -35,7 +34,7 @@ router.post("/leagues/join", async (req: AuthRequest, res) => {
 });
 
 // GET /leagues — my leagues
-router.get("/leagues", async (req: AuthRequest, res) => {
+router.get("/leagues", authenticate, async (req: AuthRequest, res) => {
   try {
     const leagues = await getMyLeagues(req.user!.user_id);
     res.json({ leagues });
@@ -45,7 +44,7 @@ router.get("/leagues", async (req: AuthRequest, res) => {
 });
 
 // GET /leagues/:leagueId — league details + standings
-router.get("/leagues/:leagueId", async (req: AuthRequest, res) => {
+router.get("/leagues/:leagueId", authenticate, async (req: AuthRequest, res) => {
   try {
     const result = await getLeagueDetails(req.params.leagueId, req.user!.user_id);
     res.json(result);
@@ -56,7 +55,7 @@ router.get("/leagues/:leagueId", async (req: AuthRequest, res) => {
 });
 
 // POST /leagues/:leagueId/leave — leave a league
-router.post("/leagues/:leagueId/leave", async (req: AuthRequest, res) => {
+router.post("/leagues/:leagueId/leave", authenticate, async (req: AuthRequest, res) => {
   try {
     await leaveLeague(req.params.leagueId, req.user!.user_id);
     res.json({ message: "You have left the league." });

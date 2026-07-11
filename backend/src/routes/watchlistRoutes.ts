@@ -8,10 +8,9 @@ import {
 } from "../services/watchlistService";
 
 const router = express.Router();
-router.use(authenticate);
 
 /** GET /watchlist — enriched watched players with insights */
-router.get("/watchlist", async (req: AuthRequest, res) => {
+router.get("/watchlist", authenticate, async (req: AuthRequest, res) => {
   try {
     const players = await getWatchlist(req.user!.user_id);
     res.json({ players });
@@ -21,7 +20,7 @@ router.get("/watchlist", async (req: AuthRequest, res) => {
 });
 
 /** GET /watchlist/ids — lightweight list of watched player_ids (for toggle state) */
-router.get("/watchlist/ids", async (req: AuthRequest, res) => {
+router.get("/watchlist/ids", authenticate, async (req: AuthRequest, res) => {
   try {
     const ids = await getWatchedPlayerIds(req.user!.user_id);
     res.json({ ids });
@@ -31,7 +30,7 @@ router.get("/watchlist/ids", async (req: AuthRequest, res) => {
 });
 
 /** POST /watchlist — add a player */
-router.post("/watchlist", async (req: AuthRequest, res) => {
+router.post("/watchlist", authenticate, async (req: AuthRequest, res) => {
   try {
     const { player_id } = req.body;
     if (!player_id) return res.status(400).json({ error: "player_id is required." });
@@ -43,7 +42,7 @@ router.post("/watchlist", async (req: AuthRequest, res) => {
 });
 
 /** DELETE /watchlist/:playerId — remove a player */
-router.delete("/watchlist/:playerId", async (req: AuthRequest, res) => {
+router.delete("/watchlist/:playerId", authenticate, async (req: AuthRequest, res) => {
   try {
     await removeFromWatchlist(req.user!.user_id, req.params.playerId);
     res.json({ message: "Player removed from watchlist." });
