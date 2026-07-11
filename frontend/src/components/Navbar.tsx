@@ -51,6 +51,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/leaderboard",   label: "Leaderboard"    },
       { href: "/leagues",       label: "Mini Leagues"   },
       { href: "/achievements",  label: "Achievements"   },
+      { href: "/watchlist",     label: "Watchlist"      },
       { href: "/history",       label: "History"        },
     ],
   },

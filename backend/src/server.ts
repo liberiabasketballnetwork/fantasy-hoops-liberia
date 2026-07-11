@@ -26,6 +26,7 @@ import teamPlannerRoutes from "./routes/teamPlannerRoutes";
 import teamOptimizerRoutes from "./routes/teamOptimizerRoutes";
 import leagueRoutes from "./routes/leagueRoutes";
 import achievementRoutes from "./routes/achievementRoutes";
+import watchlistRoutes from "./routes/watchlistRoutes";
 
 dotenv.config();
 
@@ -62,6 +63,7 @@ app.use("/", teamPlannerRoutes);      // /team-planner/simulate
 app.use("/", teamOptimizerRoutes);    // /team-optimizer
 app.use("/", leagueRoutes);           // /leagues/*
 app.use("/", achievementRoutes);      // /achievements/* and /admin/achievements/*
+app.use("/", watchlistRoutes);        // /watchlist/*
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

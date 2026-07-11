@@ -4,15 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
-import { AppModal, LoadingOverlay, PriceBadge, FormBadge, Last5Sparkline } from "@/components/ui";
+import { AppModal, LoadingOverlay, PriceBadge, FormBadge, Last5Sparkline, ToastContainer, useToast } from "@/components/ui";
 
 const MAX_PLAYERS_PER_TEAM = 2;
 
 export default function PlayersPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
+  const { toasts, toast: addToast, dismiss: removeToast } = useToast();
   const [players, setPlayers] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
+  const [watchedIds, setWatchedIds] = useState<Set<string>>(new Set());
   const [teamFilter, setTeamFilter] = useState<string>("");
   const [selected, setSelected] = useState<string[]>([]);
   const [captain, setCaptain] = useState<string>("");
@@ -34,17 +36,19 @@ export default function PlayersPage() {
   useEffect(() => {
     async function load() {
       try {
-        const [playersRes, teamsRes, lbRes, settingsRes] = await Promise.all([
+        const [playersRes, teamsRes, lbRes, settingsRes, watchRes] = await Promise.all([
           api.get("/players"),
           api.get("/teams"),
           api.get("/leaderboard"),
           api.get("/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
+          api.get("/watchlist/ids").catch(() => ({ data: { ids: [] } })),
         ]);
         setPlayers(playersRes.data.players || []);
         setTeams(teamsRes.data.teams || []);
         if (lbRes.data.week) setWeekId(lbRes.data.week.week_id);
         setSalaryCapEnabled(settingsRes.data.salary_cap_enabled);
         setBudgetCap(settingsRes.data.budget_cap);
+        setWatchedIds(new Set(watchRes.data.ids || []));
       } catch (e) {
         console.error(e);
       }
@@ -183,8 +187,26 @@ export default function PlayersPage() {
     }
   }
 
+  async function toggleWatch(playerId: string, playerName: string) {
+    const isWatched = watchedIds.has(playerId);
+    try {
+      if (isWatched) {
+        await api.delete(`/watchlist/${playerId}`);
+        setWatchedIds((prev) => { const next = new Set(prev); next.delete(playerId); return next; });
+        addToast("info", `${playerName} removed from watchlist.`);
+      } else {
+        await api.post("/watchlist", { player_id: playerId });
+        setWatchedIds((prev) => new Set([...prev, playerId]));
+        addToast("success", `${playerName} added to watchlist!`);
+      }
+    } catch (err: any) {
+      addToast("error", err?.response?.data?.error || "Could not update watchlist.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-5">
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
       <LoadingOverlay visible={submitting} title="Submitting Team..." message="Saving your lineup for this week." />
 
       <AppModal
@@ -311,6 +333,19 @@ export default function PlayersPage() {
                 <div className="mt-3 border-t border-[#1f2733] pt-3">
                   <Last5Sparkline scores={p.last_5_fantasy_scores} />
                 </div>
+              )}
+              {user && (
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleWatch(p.player_id, p.full_name); }}
+                  className={`mt-2 text-xs self-start px-2 py-1 rounded transition-colors ${
+                    watchedIds.has(p.player_id)
+                      ? "text-court-orange bg-court-orange/10"
+                      : "text-gray-500 hover:text-court-orange"
+                  }`}
+                  aria-label={watchedIds.has(p.player_id) ? `Unwatch ${p.full_name}` : `Watch ${p.full_name}`}
+                >
+                  {watchedIds.has(p.player_id) ? "♥ Watching" : "♡ Watch"}
+                </button>
               )}
             </div>
           );
