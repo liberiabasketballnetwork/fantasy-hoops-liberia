@@ -1,4 +1,5 @@
 import express from "express";
+import { v4 as uuidv4 } from "uuid";
 import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import {
   getUserAchievements,
@@ -6,6 +7,7 @@ import {
   evaluateAchievements,
   BADGE_CATALOG,
 } from "../services/achievementService";
+import { dispatchAchievementNotifications } from "../services/achievementNotificationProducer";
 
 const router = express.Router();
 
@@ -44,6 +46,16 @@ router.post(
     try {
       const { weekId } = req.params;
       const result = await evaluateAchievements(weekId);
+
+      // Fire-and-forget: dispatch achievement notifications.
+      // A workflow_id is generated per admin evaluation run for tracing.
+      // Any notification failure is logged inside the producer — it never
+      // affects badge persistence or this response.
+      const workflow_id = uuidv4();
+      dispatchAchievementNotifications(result.awarded, workflow_id).catch((err) => {
+        console.error("[achievementRoutes] Achievement producer dispatch error:", err);
+      });
+
       res.json({
         message: `Achievement evaluation complete. ${result.awarded.length} badge${result.awarded.length !== 1 ? "s" : ""} awarded.`,
         awarded: result.awarded,

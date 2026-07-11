@@ -189,6 +189,65 @@ class NotificationEventEngine {
     return { dispatched, errors };
   }
 
+  /**
+   * Dispatch multiple NotificationEvents in a single call.
+   *
+   * Events are validated and enriched individually, then routed to each
+   * registered destination as a batch. Destinations that support batch
+   * writes (e.g. notificationCenterWriter using batchUpdate) receive the
+   * full array. Destinations that do not implement a batch handler receive
+   * events one at a time.
+   *
+   * The existing dispatch(event) API is unchanged and continues to work.
+   */
+  async dispatchMany(rawEvents: NotificationEvent[]): Promise<{ dispatched: number; skipped: number; errors: string[] }> {
+    if (rawEvents.length === 0) return { dispatched: 0, skipped: 0, errors: [] };
+
+    // Validate and enrich each event
+    const enriched: NotificationEvent[] = [];
+    const errors: string[] = [];
+    let skipped = 0;
+
+    for (const rawEvent of rawEvents) {
+      const validation = validateNotificationEvent(rawEvent);
+      if (!validation.valid) {
+        errors.push(`Skipped invalid event (${rawEvent.idempotencyKey}): ${validation.reason}`);
+        skipped++;
+        continue;
+      }
+      enriched.push({
+        ...rawEvent,
+        priority: assignPriority(rawEvent),
+        expires_at: assignExpiry(rawEvent),
+      });
+    }
+
+    if (enriched.length === 0) return { dispatched: 0, skipped, errors };
+
+    let dispatched = 0;
+    for (const destination of this.destinations) {
+      try {
+        // If the destination exposes a handleMany method, use it (batch path).
+        // Otherwise fall back to sequential single dispatch.
+        if (typeof (destination as any).handleMany === "function") {
+          await (destination as any).handleMany(enriched);
+          dispatched = enriched.length;
+        } else {
+          for (const event of enriched) {
+            await destination.handle(event);
+            dispatched++;
+          }
+        }
+      } catch (err: any) {
+        const msg = `Destination "${destination.name}" failed in dispatchMany: ${err?.message || "unknown error"}`;
+        console.error(`[NotificationEngine] ${msg}`);
+        errors.push(msg);
+      }
+    }
+
+    return { dispatched, skipped, errors };
+  }
+
   getRegisteredDestinations(): string[] {
     return this.destinations.map((d) => d.name);
   }
