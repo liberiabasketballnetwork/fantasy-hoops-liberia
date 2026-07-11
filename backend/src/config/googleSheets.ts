@@ -21,6 +21,7 @@ export const SHEET_NAMES = {
   LEAGUE_MEMBERS: "League_Members",
   ACHIEVEMENTS: "Achievements",
   WATCHLISTS: "Watchlists",
+  NOTIFICATIONS: "Notifications",
 } as const;
 
 export const SHEET_HEADERS: Record<string, string[]> = {
@@ -44,4 +45,5 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.LEAGUE_MEMBERS]: ["league_member_id","league_id","user_id","joined_at"],
   [SHEET_NAMES.ACHIEVEMENTS]: ["achievement_id","user_id","badge_key","badge_name","description","earned_at","week_id","metadata"],
   [SHEET_NAMES.WATCHLISTS]: ["watchlist_id","user_id","player_id","created_at"],
+  [SHEET_NAMES.NOTIFICATIONS]: ["notification_id","user_id","type","title","message","link","status","priority","metadata","created_at","expires_at"],
 };
