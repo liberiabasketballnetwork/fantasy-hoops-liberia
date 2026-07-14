@@ -303,9 +303,16 @@ export default function AdminPage() {
       {/* Current Gameweek */}
       <div className="card p-5">
         <h2 className="font-bold mb-3">📅 Current Gameweek</h2>
-        {weeks.length === 0 ? (
+        {(weeks.length === 0 || String(weeks[0]?.is_locked).toUpperCase() === "TRUE") ? (
           <div className="flex flex-col gap-3">
-            <p className="text-sm text-gray-400">No active gameweek. Create one below.</p>
+            {weeks.length > 0 && (
+              <p className="text-xs text-gray-500">
+                Current week is locked. You can create the next gameweek below.
+              </p>
+            )}
+            {weeks.length === 0 && (
+              <p className="text-sm text-gray-400">No active gameweek. Create one below.</p>
+            )}
             <div className="flex flex-wrap gap-2">
               <input type="date" className="input-field w-auto" placeholder="Start date" value={weekForm.start_date} onChange={(e) => setWeekForm({ ...weekForm, start_date: e.target.value })} />
               <input type="date" className="input-field w-auto" placeholder="End date" value={weekForm.end_date} onChange={(e) => setWeekForm({ ...weekForm, end_date: e.target.value })} />
