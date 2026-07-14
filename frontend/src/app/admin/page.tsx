@@ -42,6 +42,9 @@ export default function AdminPage() {
   // FHDS: Price update
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
+  // Emergency Tools panel
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+
   // FHDS: AppModal state
   const [modal, setModal] = useState<{
     open: boolean;
@@ -300,19 +303,14 @@ export default function AdminPage() {
         </div>
       </div>
 
-      {/* Current Gameweek */}
+      {/* Weekly Operations */}
       <div className="card p-5">
-        <h2 className="font-bold mb-3">📅 Current Gameweek</h2>
-        {(weeks.length === 0 || String(weeks[0]?.is_locked).toUpperCase() === "TRUE") ? (
+        <h2 className="font-bold mb-4">📅 Weekly Operations</h2>
+
+        {/* No week at all */}
+        {weeks.length === 0 && (
           <div className="flex flex-col gap-3">
-            {weeks.length > 0 && (
-              <p className="text-xs text-gray-500">
-                Current week is locked. You can create the next gameweek below.
-              </p>
-            )}
-            {weeks.length === 0 && (
-              <p className="text-sm text-gray-400">No active gameweek. Create one below.</p>
-            )}
+            <p className="text-sm text-gray-400">No active gameweek. Create one below.</p>
             <div className="flex flex-wrap gap-2">
               <input type="date" className="input-field w-auto" placeholder="Start date" value={weekForm.start_date} onChange={(e) => setWeekForm({ ...weekForm, start_date: e.target.value })} />
               <input type="date" className="input-field w-auto" placeholder="End date" value={weekForm.end_date} onChange={(e) => setWeekForm({ ...weekForm, end_date: e.target.value })} />
@@ -320,64 +318,149 @@ export default function AdminPage() {
               <button onClick={createWeek} className="btn-primary text-sm">Create Gameweek</button>
             </div>
           </div>
-        ) : (
-          weeks.map((w) => (
-            <div key={w.week_id} className="text-sm">
-              <div className="flex flex-wrap gap-2 text-gray-400 mb-3">
-                <span>{w.start_date} → {w.end_date}</span>
-                <span>·</span>
-                <span>Deadline: {w.submission_deadline}</span>
-                <span>·</span>
-                <span className={w.is_locked === "TRUE" ? "text-red-400" : "text-court-green"}>
-                  {w.is_locked === "TRUE" ? "🔒 Locked" : "🟢 Open"}
+        )}
+
+        {/* Week exists */}
+        {weeks.map((w) => {
+          const isLocked    = String(w.is_locked).toUpperCase() === "TRUE";
+          const scoresCalc  = String(w.scores_calculated).toUpperCase() === "TRUE";
+          const pricesUpd   = String(w.prices_updated).toUpperCase() === "TRUE";
+
+          return (
+            <div key={w.week_id} className="flex flex-col gap-5">
+
+              {/* Status bar */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
+                  <span>{w.start_date} → {w.end_date}</span>
+                  <span>·</span>
+                  <span>Deadline: {w.submission_deadline}</span>
+                </div>
+                <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full ${isLocked ? "bg-red-500/15 text-red-400" : "bg-court-green/15 text-court-green"}`}>
+                  {isLocked ? "🔒 Locked" : "🟢 Active"}
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
-                <button onClick={() => lockWeek(w.week_id)} className="px-3 py-1 rounded bg-[#1f2733] text-xs">Lock Week</button>
+
+              {/* Workflow checklist */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                {[
+                  { label: "Scores Calculated", done: scoresCalc },
+                  { label: "Prices Updated",    done: pricesUpd  },
+                  { label: "Badges Evaluated",  done: false       },
+                  { label: "Notifications Sent",done: false       },
+                ].map(({ label, done }) => (
+                  <div
+                    key={label}
+                    className={`text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 ${
+                      done ? "bg-court-green/10 text-court-green" : "bg-[#0b0f14] text-gray-500"
+                    }`}
+                  >
+                    <span>{done ? "✓" : "○"}</span>
+                    <span>{label}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Active week operations */}
+              {!isLocked && (
+                <div className="flex flex-col gap-2">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Workflow</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => lockWeek(w.week_id)} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold">
+                      🔒 Lock Week
+                    </button>
+                    <button
+                      onClick={() => calculateWeeklyScores(w.week_id)}
+                      disabled={calculatingWeeklyScores}
+                      className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50"
+                    >
+                      {calculatingWeeklyScores ? "Calculating..." : "📊 Calculate Scores"}
+                    </button>
+                    <button
+                      onClick={() => updatePlayerPrices(w.week_id)}
+                      disabled={updatingPrices}
+                      className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50"
+                    >
+                      {updatingPrices ? "Updating..." : "💰 Update Prices"}
+                    </button>
+                    <button
+                      onClick={async () => {
+                        try {
+                          const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`);
+                          setMessage(`✅ ${res.data.message}`);
+                        } catch (err: any) {
+                          setMessage(err?.response?.data?.error || "Failed to evaluate achievements.");
+                        }
+                      }}
+                      className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold"
+                    >
+                      🏅 Evaluate Badges
+                    </button>
+                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">
+                      📋 View Report
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Locked week: success panel + create next week */}
+              {isLocked && (
+                <div className="flex flex-col gap-4">
+                  <div className="rounded-lg border border-court-green/30 bg-court-green/5 p-4">
+                    <p className="text-sm font-semibold text-court-green">✅ Gameweek Finalized</p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      This gameweek has been locked and finalized. You may now create the next gameweek.
+                    </p>
+                  </div>
+                  <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block w-fit">
+                    📋 View Final Report
+                  </a>
+                  <div className="flex flex-col gap-2">
+                    <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Create Next Gameweek</p>
+                    <div className="flex flex-wrap gap-2">
+                      <input type="date" className="input-field w-auto" placeholder="Start date" value={weekForm.start_date} onChange={(e) => setWeekForm({ ...weekForm, start_date: e.target.value })} />
+                      <input type="date" className="input-field w-auto" placeholder="End date" value={weekForm.end_date} onChange={(e) => setWeekForm({ ...weekForm, end_date: e.target.value })} />
+                      <input type="datetime-local" className="input-field w-auto" placeholder="Deadline" value={weekForm.submission_deadline} onChange={(e) => setWeekForm({ ...weekForm, submission_deadline: e.target.value })} />
+                      <button onClick={createWeek} className="btn-primary text-sm">Create Gameweek</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Emergency Tools — collapsed by default */}
+              <div className="border-t border-[#1f2733] pt-3">
                 <button
-                  onClick={() => calculateWeeklyScores(w.week_id)}
-                  disabled={calculatingWeeklyScores}
-                  className="px-3 py-1 rounded bg-blue-600 text-xs"
+                  onClick={() => setEmergencyOpen((o) => !o)}
+                  className="flex items-center gap-2 text-xs text-yellow-500 font-semibold hover:text-yellow-400 transition-colors"
                 >
-                  {calculatingWeeklyScores ? "Calculating..." : "Calculate Weekly Scores"}
+                  <span className={`transition-transform ${emergencyOpen ? "rotate-90" : ""}`}>▶</span>
+                  ⚠️ Emergency Tools
                 </button>
-                <button
-                  onClick={() => updatePlayerPrices(w.week_id)}
-                  disabled={updatingPrices}
-                  className="px-3 py-1 rounded bg-blue-600 text-xs"
-                >
-                  {updatingPrices ? "Updating..." : "Update Player Prices"}
-                </button>
-                <a
-                  href={`/reports/${w.week_id}`}
-                  className="px-3 py-1 rounded bg-[#1f2733] text-xs inline-block"
-                >
-                  📋 View Report
-                </a>
-                <button
-                  onClick={async () => {
-                    try {
-                      const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`);
-                      setMessage(`✅ ${res.data.message}`);
-                    } catch (err: any) {
-                      setMessage(err?.response?.data?.error || "Failed to evaluate achievements.");
-                    }
-                  }}
-                  className="px-3 py-1 rounded bg-[#1f2733] text-xs"
-                >
-                  🏅 Evaluate Badges
-                </button>
-                <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Reset Week</button>
-                <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1 rounded bg-red-700 text-xs">Rollback Last Calculation</button>
-                {String(w.is_locked).toUpperCase() === "TRUE" && (
-                  <button onClick={() => setForceGameWeekId(w.week_id)} className="px-3 py-1 rounded bg-yellow-600 text-xs font-semibold">
-                    ⚠️ Force Add Game
-                  </button>
+                {emergencyOpen && (
+                  <div className="mt-3 flex flex-col gap-3 pl-4 border-l border-yellow-600/30">
+                    <p className="text-xs text-gray-500">
+                      These operations are destructive. Use only to recover from calculation errors.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60">
+                        🔁 Reset Week
+                      </button>
+                      <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60">
+                        ↩️ Rollback Last Calculation
+                      </button>
+                      {isLocked && (
+                        <button onClick={() => setForceGameWeekId(w.week_id)} className="px-3 py-1.5 rounded bg-yellow-900/40 border border-yellow-700/50 text-yellow-400 text-xs font-semibold hover:bg-yellow-900/60">
+                          ⚠️ Force Add Game
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 )}
               </div>
+
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
 
       {/* Teams */}
