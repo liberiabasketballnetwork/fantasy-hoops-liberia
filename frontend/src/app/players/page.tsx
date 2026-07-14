@@ -22,6 +22,8 @@ export default function PlayersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [salaryCapEnabled, setSalaryCapEnabled] = useState(true);
   const [budgetCap, setBudgetCap] = useState(100);
+  // HOTFIX-006A: track submitted state
+  const [alreadySubmitted, setAlreadySubmitted] = useState(false);
 
   // FHDS AppModal state
   const [modal, setModal] = useState<{
@@ -36,6 +38,7 @@ export default function PlayersPage() {
   useEffect(() => {
     async function load() {
       try {
+        // Stage 1: parallel fetches that don't need week_id
         const [playersRes, teamsRes, lbRes, settingsRes, watchRes] = await Promise.all([
           api.get("/players"),
           api.get("/teams"),
@@ -45,10 +48,25 @@ export default function PlayersPage() {
         ]);
         setPlayers(playersRes.data.players || []);
         setTeams(teamsRes.data.teams || []);
-        if (lbRes.data.week) setWeekId(lbRes.data.week.week_id);
         setSalaryCapEnabled(settingsRes.data.salary_cap_enabled);
         setBudgetCap(settingsRes.data.budget_cap);
         setWatchedIds(new Set(watchRes.data.ids || []));
+
+        const currentWeekId = lbRes.data.week?.week_id;
+        if (currentWeekId) {
+          setWeekId(currentWeekId);
+
+          // Stage 2: HOTFIX-006A — fetch existing lineup using resolved week_id
+          const lineupRes = await api.get("/my-lineup", { params: { week_id: currentWeekId } }).catch(() => null);
+          if (lineupRes?.data?.lineup && lineupRes.data.players?.length > 0) {
+            // Merge pattern from HOTFIX-005: join players array into lineup object
+            const existingLineup = { ...lineupRes.data.lineup, players: lineupRes.data.players };
+            const existingPlayerIds = lineupRes.data.players.map((p: any) => p.player_id);
+            setSelected(existingPlayerIds);
+            setCaptain(existingLineup.captain_player_id || "");
+            setAlreadySubmitted(true);
+          }
+        }
       } catch (e) {
         console.error(e);
       }
@@ -75,6 +93,9 @@ export default function PlayersPage() {
   }
 
   function toggleSelect(playerId: string) {
+    // HOTFIX-006A: selection disabled when lineup already submitted
+    if (alreadySubmitted) return;
+
     const player = players.find((p) => p.player_id === playerId);
     const price = Number(player?.fantasy_price || 0);
 
@@ -165,6 +186,7 @@ export default function PlayersPage() {
         captain_player_id: captain,
       });
       const captainPlayer = players.find((p) => p.player_id === captain);
+      setAlreadySubmitted(true); // HOTFIX-006A: lock page after successful submission
       setModal({
         open: true,
         type: "success",
@@ -222,9 +244,21 @@ export default function PlayersPage() {
       <div>
         <h1 className="text-2xl font-bold">Pick Your 5</h1>
         <p className="text-sm text-gray-400">
-          Selected: {selected.length}/5 {captain && "· Captain selected"}
+          {alreadySubmitted
+            ? "✓ Lineup submitted for this gameweek."
+            : `Selected: ${selected.length}/5 ${captain ? "· Captain selected" : ""}`}
         </p>
       </div>
+
+      {/* HOTFIX-006A: read-only notice when lineup already submitted */}
+      {alreadySubmitted && (
+        <div className="card p-4 border border-court-green/30 bg-court-green/5">
+          <p className="text-sm font-semibold text-court-green">✅ Your lineup is locked in for this gameweek.</p>
+          <p className="text-xs text-gray-400 mt-1">
+            You can still watch players and browse the market. Selections are read-only until the next gameweek.
+          </p>
+        </div>
+      )}
 
       <div className="card p-4">
         <p className="text-sm font-bold mb-2">LINEUP RULES</p>
@@ -268,15 +302,23 @@ export default function PlayersPage() {
           const price = Number(p.fantasy_price || 0);
           const tooExpensive = salaryCapEnabled && !isSelected && price > remaining;
           const teamFull = !isSelected && !!p.team_id && (teamCounts[p.team_id] || 0) >= MAX_PLAYERS_PER_TEAM;
-          const disabled = tooExpensive || teamFull;
+          // HOTFIX-006A: when already submitted, cards are display-only (no click-to-select)
+          const disabled = alreadySubmitted ? false : (tooExpensive || teamFull);
           return (
             <div
               key={p.player_id}
-              className={`card relative p-4 cursor-pointer transition-colors ${isSelected ? "border-2 border-court-orange" : ""} ${disabled ? "opacity-50" : ""}`}
+              className={`card relative p-4 transition-colors ${
+                isSelected ? "border-2 border-court-orange" : ""
+              } ${disabled ? "opacity-50" : ""} ${
+                alreadySubmitted ? "cursor-default" : "cursor-pointer"
+              }`}
               onClick={() => toggleSelect(p.player_id)}
             >
               {isSelected && (
                 <div className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-court-orange flex items-center justify-center text-white text-xs font-bold shadow">✓</div>
+              )}
+              {isCaptain && (
+                <div className="absolute -top-2 left-2 w-6 h-6 rounded-full bg-yellow-500 flex items-center justify-center text-white text-xs font-bold shadow">C</div>
               )}
               <div className="flex justify-between items-start gap-3">
                 <div className="flex items-center gap-3">
@@ -301,13 +343,18 @@ export default function PlayersPage() {
                       variant="inline"
                     />
                   )}
-                  {isSelected && (
+                  {/* HOTFIX-006A: captain button hidden in read-only mode */}
+                  {isSelected && !alreadySubmitted && (
                     <button
                       onClick={(e) => { e.stopPropagation(); setCaptain(p.player_id); }}
                       className={`text-xs px-2 py-1 rounded ${isCaptain ? "bg-court-orange" : "bg-[#1f2733]"}`}
                     >
                       {isCaptain ? "★ Captain" : "Make Captain"}
                     </button>
+                  )}
+                  {/* HOTFIX-006A: read-only captain indicator */}
+                  {isSelected && alreadySubmitted && isCaptain && (
+                    <span className="text-xs px-2 py-1 rounded bg-court-orange text-white font-semibold">★ Captain</span>
                   )}
                 </div>
               </div>
@@ -334,6 +381,7 @@ export default function PlayersPage() {
                   <Last5Sparkline scores={p.last_5_fantasy_scores} />
                 </div>
               )}
+              {/* Watchlist always functional — not affected by alreadySubmitted */}
               {user && (
                 <button
                   onClick={(e) => { e.stopPropagation(); toggleWatch(p.player_id, p.full_name); }}
@@ -355,8 +403,17 @@ export default function PlayersPage() {
         )}
       </div>
 
-      <button onClick={submitLineup} disabled={submitting} className="btn-primary w-fit">
-        {submitting ? "Submitting..." : "Submit Lineup"}
+      {/* HOTFIX-006A: submit button replaced with confirmation when already submitted */}
+      <button
+        onClick={alreadySubmitted ? undefined : submitLineup}
+        disabled={submitting || alreadySubmitted}
+        className={`w-fit font-semibold px-5 py-2 rounded transition-colors ${
+          alreadySubmitted
+            ? "bg-court-green/20 text-court-green border border-court-green/40 cursor-default"
+            : "btn-primary"
+        }`}
+      >
+        {submitting ? "Submitting..." : alreadySubmitted ? "✓ Lineup Submitted" : "Submit Lineup"}
       </button>
     </div>
   );
