@@ -48,7 +48,7 @@ export default function DashboardPage() {
             api.get("/achievements").catch(() => null),
           ]);
 
-          if (lineupRes) setLineup(lineupRes.data.lineup);
+          if (lineupRes) setLineup({ ...lineupRes.data.lineup, players: lineupRes.data.players });
           if (advRes) setAdvisor(advRes.data);
           if (achRes) setRecentBadges((achRes.data.earned || []).slice(0, 3));
 
