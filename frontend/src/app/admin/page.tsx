@@ -49,6 +49,9 @@ export default function AdminPage() {
   const [usersRefreshing, setUsersRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
+  // ADMIN-006: Gameweek Participation
+  const [selectionStats, setSelectionStats] = useState<any>(null);
+
   // FHDS: AppModal state
   const [modal, setModal] = useState<{
     open: boolean;
@@ -63,16 +66,18 @@ export default function AdminPage() {
 
   async function loadAll() {
     try {
-      const [weeksRes, teamsRes, usersRes, settingsRes] = await Promise.all([
+      const [weeksRes, teamsRes, usersRes, settingsRes, statsRes] = await Promise.all([
         api.get("/leaderboard").catch(() => ({ data: { week: null } })),
         api.get("/teams").catch(() => ({ data: { teams: [] } })),
         api.get("/admin/users").catch((err: any) => { console.error("admin/users error:", err?.response?.status, err?.response?.data); return { data: { users: [] } }; }),
         api.get("/admin/settings").catch(() => ({ data: { salary_cap_enabled: true, budget_cap: 100 } })),
+        api.get("/admin/selection-stats").catch(() => null), // ADMIN-006: graceful degradation
       ]);
       setTeams(teamsRes.data.teams || []);
       setUsers(usersRes.data.users || []);
       setSettings(settingsRes.data);
       if (weeksRes.data.week) setWeeks([weeksRes.data.week]);
+      setSelectionStats(statsRes?.data ?? null); // ADMIN-006: null if request failed
       setLastUpdated(new Date()); // UX-001: record successful load time
     } catch (e) {
       console.error(e);
@@ -478,6 +483,65 @@ export default function AdminPage() {
           );
         })}
       </div>
+
+      {/* ADMIN-006: Gameweek Participation */}
+      {selectionStats && (
+        <div className="card p-5">
+          <h2 className="font-bold mb-4">📊 Gameweek Participation</h2>
+
+          {/* Week label */}
+          {selectionStats.week && (
+            <p className="text-xs text-gray-400 mb-4">
+              Week: {selectionStats.week.start_date} → {selectionStats.week.end_date}
+            </p>
+          )}
+
+          {/* Summary stats */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            {[
+              { label: "Registered Managers", value: users.length },
+              { label: "Submitted Teams", value: selectionStats.total_managers ?? 0 },
+              { label: "Pending Managers", value: Math.max(0, users.length - (selectionStats.total_managers ?? 0)) },
+              {
+                label: "Participation Rate",
+                value: users.length > 0
+                  ? `${((selectionStats.total_managers ?? 0) / users.length * 100).toFixed(1)}%`
+                  : "—",
+              },
+            ].map(({ label, value }) => (
+              <div key={label} className="bg-[#0b0f14] rounded-lg p-3">
+                <p className="text-xs text-gray-500">{label}</p>
+                <p className="text-xl font-bold text-court-orange mt-0.5">{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Top 5 selected players */}
+          {selectionStats.stats?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">Top 5 Selected Players</p>
+              <div className="flex flex-col gap-1.5">
+                {selectionStats.stats.slice(0, 5).map((row: any, i: number) => (
+                  <div key={row.player_id} className="flex items-center justify-between text-sm py-1.5 border-b border-[#1f2733] last:border-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-600 w-4">{i + 1}.</span>
+                      <span className="font-medium">{row.full_name}</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-xs text-gray-400">
+                      <span>{row.count} selection{row.count !== 1 ? "s" : ""}</span>
+                      <span className="text-court-orange font-semibold w-10 text-right">{row.percentage}%</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {selectionStats.total_managers === 0 && (
+            <p className="text-sm text-gray-500">No lineups submitted yet for this gameweek.</p>
+          )}
+        </div>
+      )}
 
       {/* Teams */}
       <div className="card p-5">
