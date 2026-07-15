@@ -45,6 +45,10 @@ export default function AdminPage() {
   // Emergency Tools panel
   const [emergencyOpen, setEmergencyOpen] = useState(false);
 
+  // UX-001: Users refresh state
+  const [usersRefreshing, setUsersRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+
   // FHDS: AppModal state
   const [modal, setModal] = useState<{
     open: boolean;
@@ -69,8 +73,20 @@ export default function AdminPage() {
       setUsers(usersRes.data.users || []);
       setSettings(settingsRes.data);
       if (weeksRes.data.week) setWeeks([weeksRes.data.week]);
+      setLastUpdated(new Date()); // UX-001: record successful load time
     } catch (e) {
       console.error(e);
+      // UX-001: do NOT update lastUpdated on failure — preserve last known good time
+    }
+  }
+
+  // UX-001: Refresh button handler — wraps loadAll with loading state
+  async function refreshUsers() {
+    setUsersRefreshing(true);
+    try {
+      await loadAll();
+    } finally {
+      setUsersRefreshing(false);
     }
   }
 
@@ -483,7 +499,21 @@ export default function AdminPage() {
 
       {/* Users */}
       <div className="card p-5">
-        <h2 className="font-bold mb-3">Users ({users.length})</h2>
+        <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+          <div>
+            <h2 className="font-bold">Users ({users.length})</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Last updated: {lastUpdated ? lastUpdated.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Never"}
+            </p>
+          </div>
+          <button
+            onClick={refreshUsers}
+            disabled={usersRefreshing}
+            className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold disabled:opacity-50 transition-colors"
+          >
+            {usersRefreshing ? "🔄 Refreshing..." : "🔄 Refresh"}
+          </button>
+        </div>
         <div className="flex flex-col gap-1 text-sm max-h-60 overflow-y-auto">
           {users.map((u: any) => (
             <div key={u.user_id} className="border-b border-[#1f2733] py-2">
