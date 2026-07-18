@@ -343,9 +343,19 @@ export default function AdminPage() {
 
         {/* Week exists */}
         {weeks.map((w) => {
-          const isLocked    = String(w.is_locked).toUpperCase() === "TRUE";
-          const scoresCalc  = String(w.scores_calculated).toUpperCase() === "TRUE";
-          const pricesUpd   = String(w.prices_updated).toUpperCase() === "TRUE";
+          const isLocked   = String(w.is_locked).toUpperCase() === "TRUE";
+          const scoresCalc = String(w.scores_calculated).toUpperCase() === "TRUE";
+          const pricesUpd  = String(w.prices_updated).toUpperCase() === "TRUE";
+
+          // ADL-044: lock ≠ finalization — three distinct lifecycle states
+          const isFinalized  = isLocked && scoresCalc && pricesUpd;
+          const isProcessing = isLocked && !isFinalized;
+
+          const statusBadge = isFinalized
+            ? { label: "✅ Finalized", cls: "bg-court-green/15 text-court-green"  }
+            : isProcessing
+            ? { label: "🟡 Locked",   cls: "bg-yellow-500/15 text-yellow-400"    }
+            : { label: "🟢 Open",     cls: "bg-court-green/15 text-court-green"  };
 
           return (
             <div key={w.week_id} className="flex flex-col gap-5">
@@ -357,8 +367,8 @@ export default function AdminPage() {
                   <span>·</span>
                   <span>Deadline: {w.submission_deadline}</span>
                 </div>
-                <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full ${isLocked ? "bg-red-500/15 text-red-400" : "bg-court-green/15 text-court-green"}`}>
-                  {isLocked ? "🔒 Locked" : "🟢 Active"}
+                <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full ${statusBadge.cls}`}>
+                  {statusBadge.label}
                 </span>
               </div>
 
@@ -370,19 +380,14 @@ export default function AdminPage() {
                   { label: "Badges Evaluated",  done: false       },
                   { label: "Notifications Sent",done: false       },
                 ].map(({ label, done }) => (
-                  <div
-                    key={label}
-                    className={`text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 ${
-                      done ? "bg-court-green/10 text-court-green" : "bg-[#0b0f14] text-gray-500"
-                    }`}
-                  >
+                  <div key={label} className={`text-xs px-3 py-2 rounded-lg flex items-center gap-1.5 ${done ? "bg-court-green/10 text-court-green" : "bg-[#0b0f14] text-gray-500"}`}>
                     <span>{done ? "✓" : "○"}</span>
                     <span>{label}</span>
                   </div>
                 ))}
               </div>
 
-              {/* Active week operations */}
+              {/* OPEN: Lock Week + all workflow actions */}
               {!isLocked && (
                 <div className="flex flex-col gap-2">
                   <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Workflow</p>
@@ -390,52 +395,51 @@ export default function AdminPage() {
                     <button onClick={() => lockWeek(w.week_id)} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold">
                       🔒 Lock Week
                     </button>
-                    <button
-                      onClick={() => calculateWeeklyScores(w.week_id)}
-                      disabled={calculatingWeeklyScores}
-                      className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50"
-                    >
+                    <button onClick={() => calculateWeeklyScores(w.week_id)} disabled={calculatingWeeklyScores} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50">
                       {calculatingWeeklyScores ? "Calculating..." : "📊 Calculate Scores"}
                     </button>
-                    <button
-                      onClick={() => updatePlayerPrices(w.week_id)}
-                      disabled={updatingPrices}
-                      className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50"
-                    >
+                    <button onClick={() => updatePlayerPrices(w.week_id)} disabled={updatingPrices} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50">
                       {updatingPrices ? "Updating..." : "💰 Update Prices"}
                     </button>
-                    <button
-                      onClick={async () => {
-                        try {
-                          const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`);
-                          setMessage(`✅ ${res.data.message}`);
-                        } catch (err: any) {
-                          setMessage(err?.response?.data?.error || "Failed to evaluate achievements.");
-                        }
-                      }}
-                      className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold"
-                    >
+                    <button onClick={async () => { try { const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`); setMessage(`✅ ${res.data.message}`); } catch (err: any) { setMessage(err?.response?.data?.error || "Failed to evaluate achievements."); }}} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold">
                       🏅 Evaluate Badges
                     </button>
-                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">
-                      📋 View Report
-                    </a>
+                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">📋 View Report</a>
                   </div>
                 </div>
               )}
 
-              {/* Locked week: success panel + create next week */}
-              {isLocked && (
+              {/* LOCKED / PROCESSING: workflow buttons remain — submissions closed */}
+              {isProcessing && (
+                <div className="flex flex-col gap-3">
+                  <div className="rounded-lg border border-yellow-500/30 bg-yellow-500/5 p-4">
+                    <p className="text-sm font-semibold text-yellow-400">🟡 Submissions Closed — Workflow In Progress</p>
+                    <p className="text-xs text-gray-400 mt-1">Complete the processing steps below before creating the next gameweek.</p>
+                  </div>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Processing</p>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => calculateWeeklyScores(w.week_id)} disabled={calculatingWeeklyScores || scoresCalc} title={scoresCalc ? "Already calculated" : ""} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50">
+                      {calculatingWeeklyScores ? "Calculating..." : scoresCalc ? "📊 Scores Done ✓" : "📊 Calculate Scores"}
+                    </button>
+                    <button onClick={() => updatePlayerPrices(w.week_id)} disabled={updatingPrices || pricesUpd} title={pricesUpd ? "Already updated" : ""} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50">
+                      {updatingPrices ? "Updating..." : pricesUpd ? "💰 Prices Done ✓" : "💰 Update Prices"}
+                    </button>
+                    <button onClick={async () => { try { const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`); setMessage(`✅ ${res.data.message}`); } catch (err: any) { setMessage(err?.response?.data?.error || "Failed to evaluate achievements."); }}} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold">
+                      🏅 Evaluate Badges
+                    </button>
+                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">📋 View Report</a>
+                  </div>
+                </div>
+              )}
+
+              {/* FINALIZED: all processing complete — show create next week */}
+              {isFinalized && (
                 <div className="flex flex-col gap-4">
                   <div className="rounded-lg border border-court-green/30 bg-court-green/5 p-4">
                     <p className="text-sm font-semibold text-court-green">✅ Gameweek Finalized</p>
-                    <p className="text-xs text-gray-400 mt-1">
-                      This gameweek has been locked and finalized. You may now create the next gameweek.
-                    </p>
+                    <p className="text-xs text-gray-400 mt-1">Scores calculated, prices updated. You may now create the next gameweek.</p>
                   </div>
-                  <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block w-fit">
-                    📋 View Final Report
-                  </a>
+                  <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block w-fit">📋 View Final Report</a>
                   <div className="flex flex-col gap-2">
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Create Next Gameweek</p>
                     <div className="flex flex-wrap gap-2">
@@ -448,31 +452,20 @@ export default function AdminPage() {
                 </div>
               )}
 
-              {/* Emergency Tools — collapsed by default */}
+              {/* Emergency Tools — unchanged, collapsed by default */}
               <div className="border-t border-[#1f2733] pt-3">
-                <button
-                  onClick={() => setEmergencyOpen((o) => !o)}
-                  className="flex items-center gap-2 text-xs text-yellow-500 font-semibold hover:text-yellow-400 transition-colors"
-                >
+                <button onClick={() => setEmergencyOpen((o) => !o)} className="flex items-center gap-2 text-xs text-yellow-500 font-semibold hover:text-yellow-400 transition-colors">
                   <span className={`transition-transform ${emergencyOpen ? "rotate-90" : ""}`}>▶</span>
                   ⚠️ Emergency Tools
                 </button>
                 {emergencyOpen && (
                   <div className="mt-3 flex flex-col gap-3 pl-4 border-l border-yellow-600/30">
-                    <p className="text-xs text-gray-500">
-                      These operations are destructive. Use only to recover from calculation errors.
-                    </p>
+                    <p className="text-xs text-gray-500">These operations are destructive. Use only to recover from calculation errors.</p>
                     <div className="flex flex-wrap gap-2">
-                      <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60">
-                        🔁 Reset Week
-                      </button>
-                      <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60">
-                        ↩️ Rollback Last Calculation
-                      </button>
+                      <button onClick={() => resetWeek(w.week_id)} className="px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60">🔁 Reset Week</button>
+                      <button onClick={() => setRollbackWeekId(w.week_id)} className="px-3 py-1.5 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60">↩️ Rollback Last Calculation</button>
                       {isLocked && (
-                        <button onClick={() => setForceGameWeekId(w.week_id)} className="px-3 py-1.5 rounded bg-yellow-900/40 border border-yellow-700/50 text-yellow-400 text-xs font-semibold hover:bg-yellow-900/60">
-                          ⚠️ Force Add Game
-                        </button>
+                        <button onClick={() => setForceGameWeekId(w.week_id)} className="px-3 py-1.5 rounded bg-yellow-900/40 border border-yellow-700/50 text-yellow-400 text-xs font-semibold hover:bg-yellow-900/60">⚠️ Force Add Game</button>
                       )}
                     </div>
                   </div>
