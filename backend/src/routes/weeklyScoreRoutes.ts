@@ -1,7 +1,18 @@
 import express from "express";
+import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { calculateWeeklyScores, WeeklyScoreCalculationError } from "../services/weeklyScoreCalculationService";
+import {
+  buildWatcherIndex,
+  dispatchWatchlistFormNotifications,
+} from "../services/watchlistNotificationProducer";
+import {
+  buildPriceMovementMap,
+  buildPlayerIntelligenceMap,
+  enrichPlayers,
+} from "../utils/playerAnalytics";
+import { getSheetData } from "../services/sheetsService";
 
 const router = express.Router();
 router.use(authenticate, requireAdmin);
@@ -11,7 +22,35 @@ router.post("/calculate-weekly-scores", async (req: AuthRequest, res) => {
   try {
     const { week_id } = weekIdSchema.parse(req.body);
     const result = await calculateWeeklyScores(week_id, req.user?.user_id || "admin");
-    res.json({ message: "Weekly scores calculated successfully.", leaderboard: result.ranked, backup_id: result.backup_id });
+
+    // Fire-and-forget: watchlist form/performance notifications
+    // Scores are already committed — notification failure cannot affect them
+    const workflow_id = uuidv4();
+    (async () => {
+      try {
+        const [allPlayers, allStats, priceHistory, watcherIndex] = await Promise.all([
+          getSheetData("Players"),
+          getSheetData("Player_Stats"),
+          getSheetData("Price_History"),
+          buildWatcherIndex(),
+        ]);
+        if (watcherIndex.size === 0) return; // no one is watching anything — skip
+
+        const movementMap    = buildPriceMovementMap(priceHistory);
+        const intelligenceMap = buildPlayerIntelligenceMap(allStats);
+        const enriched       = enrichPlayers(allPlayers, movementMap, intelligenceMap);
+
+        await dispatchWatchlistFormNotifications(enriched, watcherIndex, week_id, workflow_id);
+      } catch (err: any) {
+        console.error("[weeklyScoreRoutes] Watchlist form producer error:", err?.message || err);
+      }
+    })();
+
+    res.json({
+      message: "Weekly scores calculated successfully.",
+      leaderboard: result.ranked,
+      backup_id: result.backup_id,
+    });
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid input", details: err.errors });
     if (err instanceof WeeklyScoreCalculationError) return res.status(400).json({ error: err.message });
@@ -20,3 +59,4 @@ router.post("/calculate-weekly-scores", async (req: AuthRequest, res) => {
 });
 
 export default router;
+

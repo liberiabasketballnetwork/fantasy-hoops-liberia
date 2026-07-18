@@ -4,6 +4,10 @@ import { z } from "zod";
 import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { adjustPlayerPrices, PriceAdjustmentError } from "../services/priceAdjustmentService";
 import { dispatchPricingNotifications } from "../services/pricingNotificationProducer";
+import {
+  buildWatcherIndex,
+  dispatchWatchlistPriceNotifications,
+} from "../services/watchlistNotificationProducer";
 
 const router = express.Router();
 router.use(authenticate, requireAdmin);
@@ -15,10 +19,19 @@ router.post("/update-player-prices", async (req: AuthRequest, res) => {
     const { week_id } = weekIdSchema.parse(req.body);
     const result = await adjustPlayerPrices(week_id, req.user?.user_id || "admin");
 
-    // Fire-and-forget: pricing data is already committed — notify affected users.
+    // Fire-and-forget: lineup price notifications (existing)
     const workflow_id = uuidv4();
     dispatchPricingNotifications(result, week_id, workflow_id).catch((err) => {
       console.error("[priceAdjustmentRoutes] Pricing producer error:", err);
+    });
+
+    // Fire-and-forget: watchlist price notifications (NOTIFY-004)
+    // Shares the same workflow_id so aggregation can merge with form events if present
+    buildWatcherIndex().then((watcherIndex) => {
+      if (watcherIndex.size === 0) return;
+      return dispatchWatchlistPriceNotifications(result, watcherIndex, week_id, workflow_id);
+    }).catch((err) => {
+      console.error("[priceAdjustmentRoutes] Watchlist price producer error:", err);
     });
 
     res.json({ message: `Player prices updated: ${result.updated_count} changed, ${result.no_change_count} unchanged, ${result.ignored_count} had no stats this week.`, ...result });
