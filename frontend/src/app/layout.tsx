@@ -4,15 +4,47 @@ import { AuthProvider } from "@/context/AuthContext";
 import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
-  title: "Fantasy Hoops Liberia",
-  description: "Pick your fantasy basketball team. Compete with Liberian basketball fans every week.",
-  manifest: "/manifest.json",
+  title: {
+    default: "Fantasy Hoops Liberia",
+    template: "%s | Fantasy Hoops Liberia",
+  },
+  description:
+    "Pick. Compete. Dominate. Build your ultimate Liberian basketball fantasy team.",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: [
+      { url: "/favicon.ico",  sizes: "any" },
+      { url: "/favicon.svg",  type: "image/svg+xml" },
+      { url: "/icon-16.png",  sizes: "16x16",  type: "image/png" },
+      { url: "/icon-32.png",  sizes: "32x32",  type: "image/png" },
+      { url: "/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [
+      { url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Fantasy Hoops",
+  },
+  applicationName: "Fantasy Hoops Liberia",
+  keywords: ["fantasy basketball", "Liberia", "NPA", "sports"],
+  openGraph: {
+    title: "Fantasy Hoops Liberia",
+    description:
+      "Pick. Compete. Dominate. Build your ultimate Liberian basketball fantasy team.",
+    siteName: "Fantasy Hoops Liberia",
+    type: "website",
+    images: [{ url: "/icon-512.png" }],
+  },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#0B0F14",
+  themeColor: "#F97316",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
