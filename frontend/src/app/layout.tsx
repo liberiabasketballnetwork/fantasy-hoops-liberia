@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
+import { PWAProvider } from "@/context/PWAContext";
 import Navbar from "@/components/Navbar";
 
 export const metadata: Metadata = {
@@ -52,11 +53,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <AuthProvider>
-          <Navbar />
-          <main className="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]">{children}</main>
-          <footer className="text-center text-xs text-gray-500 py-6 border-t border-[#1f2733]">
-            🇱🇷 Built for Liberian basketball fans — Fantasy Hoops Liberia © {new Date().getFullYear()}
-          </footer>
+          <PWAProvider>
+            <Navbar />
+            <main className="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]">{children}</main>
+            <footer className="text-center text-xs text-gray-500 py-6 border-t border-[#1f2733]">
+              🇱🇷 Built for Liberian basketball fans — Fantasy Hoops Liberia © {new Date().getFullYear()}
+            </footer>
+          </PWAProvider>
         </AuthProvider>
       </body>
     </html>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { FormBadge, PriceBadge } from "@/components/ui";
+import PWAInstallCard from "@/components/PWAInstallCard";
 
 interface AchievementWithBadge {
   achievement_id: string;
@@ -109,6 +110,9 @@ export default function DashboardPage() {
           </div>
         )}
       </div>
+
+      {/* PWA Install Card — shown after engagement, 3s delay handled inside */}
+      <PWAInstallCard hasTeam={hasLineup} />
 
       {/* ── Lineup status ───────────────────────────────────────────────── */}
       <div className="card p-5">
