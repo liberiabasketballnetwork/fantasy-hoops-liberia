@@ -7,6 +7,7 @@ import {
   buildWatcherIndex,
   dispatchWatchlistFormNotifications,
 } from "../services/watchlistNotificationProducer";
+import { dispatchLeagueWeeklyNotifications } from "../services/leagueNotificationProducer";
 import {
   buildPriceMovementMap,
   buildPlayerIntelligenceMap,
@@ -41,6 +42,9 @@ router.post("/calculate-weekly-scores", async (req: AuthRequest, res) => {
         const enriched       = enrichPlayers(allPlayers, movementMap, intelligenceMap);
 
         await dispatchWatchlistFormNotifications(enriched, watcherIndex, week_id, workflow_id);
+
+        // League competition notifications — NOTIFY-006
+        await dispatchLeagueWeeklyNotifications(week_id, workflow_id);
       } catch (err: any) {
         console.error("[weeklyScoreRoutes] Watchlist form producer error:", err?.message || err);
       }

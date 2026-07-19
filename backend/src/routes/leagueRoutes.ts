@@ -7,6 +7,8 @@ import {
   getLeagueDetails,
   leaveLeague,
 } from "../services/leagueService";
+import { getSheetData } from "../services/sheetsService";
+import { dispatchLeagueMembershipNotification } from "../services/leagueNotificationProducer";
 
 const router = express.Router();
 
@@ -27,6 +29,30 @@ router.post("/leagues/join", authenticate, async (req: AuthRequest, res) => {
     const { invite_code } = req.body;
     if (!invite_code) return res.status(400).json({ error: "invite_code is required." });
     const league = await joinLeague(req.user!.user_id, invite_code);
+
+    // Fire-and-forget: notify league owner of new member — NOTIFY-006
+    (async () => {
+      try {
+        // Fetch the joining user's display name for the notification title
+        const users = await getSheetData("Users");
+        const joiningUser = users.find((u) => u.user_id === req.user!.user_id);
+        const memberName = joiningUser?.display_name || joiningUser?.full_name || "A manager";
+
+        // Count current members (after join)
+        const allMembers = await getSheetData("League_Members");
+        const memberCount = allMembers.filter((m) => m.league_id === league.league_id).length;
+
+        await dispatchLeagueMembershipNotification(
+          league as any,
+          req.user!.user_id,
+          memberName,
+          memberCount
+        );
+      } catch (err: any) {
+        console.error("[leagueRoutes] Membership producer error:", err?.message || err);
+      }
+    })();
+
     res.json({ league, message: `You have joined "${league.league_name}".` });
   } catch (err: any) {
     res.status(400).json({ error: err.message || "Failed to join league." });
