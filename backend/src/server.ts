@@ -28,6 +28,9 @@ import leagueRoutes from "./routes/leagueRoutes";
 import achievementRoutes from "./routes/achievementRoutes";
 import watchlistRoutes from "./routes/watchlistRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
+import pushRoutes from "./routes/pushRoutes";
+// Bootstrap push destination (registers with engine at import time)
+import "./services/pushDestinationHandler";
 
 dotenv.config();
 
@@ -66,6 +69,7 @@ app.use("/", leagueRoutes);           // /leagues/*
 app.use("/", achievementRoutes);      // /achievements/* and /admin/achievements/*
 app.use("/", watchlistRoutes);        // /watchlist/*
 app.use("/", notificationRoutes);     // /notifications/*
+app.use("/", pushRoutes);             // /push/*
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

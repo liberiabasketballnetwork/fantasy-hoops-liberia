@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { AppModal, LoadingOverlay } from "@/components/ui";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 
 interface DisplayNameForm { display_name: string; }
 interface ChangePasswordForm {
@@ -20,6 +21,46 @@ interface AchievementWithBadge {
   icon: string;
   earned_at: string;
 }
+
+// ─── Notification Preferences sub-component ───────────────────────────────────
+
+function NotificationPrefsSection() {
+  const { permission, isSubscribed, isLoading, subscribe, unsubscribe } = usePushNotifications();
+
+  const isPushSupported = typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator;
+
+  return (
+    <div className="card p-6">
+      <h2 className="font-bold mb-4">🔔 Notifications</h2>
+      {!isPushSupported ? (
+        <p className="text-sm text-gray-400">Push notifications are not supported in this browser.</p>
+      ) : permission === "denied" ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-sm text-gray-400">Push notifications are blocked in your browser settings.</p>
+          <p className="text-xs text-gray-500">To re-enable, update your browser&apos;s site settings for fantasyhoops.online.</p>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">{isSubscribed ? "Notifications enabled on this device" : "Notifications disabled"}</p>
+            <p className="text-xs text-gray-500 mt-0.5">{isSubscribed ? "You will receive alerts for results, badges, and league updates." : "Enable to receive results, badges, and deadline reminders."}</p>
+          </div>
+          <button
+            onClick={isSubscribed ? unsubscribe : () => subscribe()}
+            disabled={isLoading}
+            className={`px-3 py-1.5 rounded text-xs font-semibold flex-shrink-0 disabled:opacity-50 ${
+              isSubscribed ? "bg-[#1f2733] text-gray-300" : "btn-primary"
+            }`}
+          >
+            {isLoading ? "…" : isSubscribed ? "Disable" : "Enable"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function ProfilePage() {
   const { user, loading, login, token } = useAuth();
@@ -189,6 +230,9 @@ export default function ProfilePage() {
           <Link href="/achievements" className="text-xs text-court-orange">Browse →</Link>
         </div>
       )}
+
+      {/* Notification Preferences */}
+      <NotificationPrefsSection />
 
       {/* Change password */}
       <div className="card p-6">

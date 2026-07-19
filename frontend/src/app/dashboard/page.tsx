@@ -6,6 +6,7 @@ import { useAuth } from "@/context/AuthContext";
 import { api } from "@/lib/api";
 import { FormBadge, PriceBadge } from "@/components/ui";
 import PWAInstallCard from "@/components/PWAInstallCard";
+import PushPermissionPrimer from "@/components/PushPermissionPrimer";
 
 interface AchievementWithBadge {
   achievement_id: string;
@@ -111,8 +112,11 @@ export default function DashboardPage() {
         )}
       </div>
 
-      {/* PWA Install Card — shown after engagement, 3s delay handled inside */}
+      {/* PWA Install Card */}
       <PWAInstallCard hasTeam={hasLineup} />
+
+      {/* Push Permission Primer — shown after first lineup submission */}
+      <PushPermissionPrimer hasTeam={hasLineup} />
 
       {/* ── Lineup status ───────────────────────────────────────────────── */}
       <div className="card p-5">

@@ -21,7 +21,9 @@ export const SHEET_NAMES = {
   LEAGUE_MEMBERS: "League_Members",
   ACHIEVEMENTS: "Achievements",
   WATCHLISTS: "Watchlists",
-  NOTIFICATIONS: "Notifications",
+  NOTIFICATIONS:            "Notifications",
+  PUSH_SUBSCRIPTIONS:       "Push_Subscriptions",
+  NOTIFICATION_PREFERENCES: "Notification_Preferences",
 } as const;
 
 export const SHEET_HEADERS: Record<string, string[]> = {
@@ -46,4 +48,6 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.ACHIEVEMENTS]: ["achievement_id","user_id","badge_key","badge_name","description","earned_at","week_id","metadata"],
   [SHEET_NAMES.WATCHLISTS]: ["watchlist_id","user_id","player_id","created_at"],
   [SHEET_NAMES.NOTIFICATIONS]: ["notification_id","user_id","type","title","message","link","status","priority","metadata","created_at","expires_at"],
+  [SHEET_NAMES.PUSH_SUBSCRIPTIONS]: ["subscription_id","user_id","endpoint","p256dh","auth","device_label","user_agent","created_at","last_used_at","status"],
+  [SHEET_NAMES.NOTIFICATION_PREFERENCES]: ["pref_id","user_id","push_enabled","categories","quiet_hours_start","quiet_hours_end","updated_at"],
 };

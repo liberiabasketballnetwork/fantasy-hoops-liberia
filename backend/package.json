@@ -8,8 +8,11 @@
     "build": "npm install --include=dev --no-save && tsc -p .",
     "start": "node --dns-result-order=ipv4first dist/server.js"
   },
-  "engines": { "node": "20.x" },
+  "engines": {
+    "node": "20.x"
+  },
   "dependencies": {
+    "@types/web-push": "^3.6.4",
     "axios": "^1.7.7",
     "bcryptjs": "^2.4.3",
     "cheerio": "^1.0.0",
@@ -24,6 +27,7 @@
     "morgan": "^1.10.0",
     "multer": "^2.2.0",
     "uuid": "^9.0.1",
+    "web-push": "^3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {

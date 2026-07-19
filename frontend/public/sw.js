@@ -267,3 +267,68 @@ self.addEventListener("fetch", (event) => {
 
   // 10. Everything else — Network Only (fall through to browser default)
 });
+
+// ─── Push event ───────────────────────────────────────────────────────────────
+
+self.addEventListener("push", (event) => {
+  if (!event.data) return;
+
+  let data;
+  try {
+    data = event.data.json();
+  } catch {
+    data = { title: "Fantasy Hoops", body: event.data.text() };
+  }
+
+  const options = {
+    body:    data.body   || "",
+    icon:    data.icon   || "/icon-192.png",
+    badge:   data.badge  || "/icon-192.png",
+    tag:     data.tag    || "fhl-notification",
+    data:    data.data   || {},
+    actions: [
+      { action: "open", title: "Open App" },
+    ],
+    requireInteraction: false,
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title || "Fantasy Hoops", options).then(() => {
+      // Update badge count if provided in payload
+      const unreadCount = data.data?.unread_count;
+      if (typeof unreadCount === "number" && "setAppBadge" in navigator) {
+        navigator.setAppBadge(unreadCount).catch(() => {});
+      }
+    })
+  );
+});
+
+// ─── Notification click ───────────────────────────────────────────────────────
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+
+  const targetUrl = event.notification.data?.url || "/dashboard";
+
+  event.waitUntil(
+    clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+      // Focus existing open window if available
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && "focus" in client) {
+          client.focus();
+          if ("navigate" in client) client.navigate(targetUrl);
+          return;
+        }
+      }
+      // No open window — open a new one at the deep link
+      return clients.openWindow(targetUrl);
+    })
+  );
+});
+
+// ─── Notification close (analytics — client-side only) ───────────────────────
+
+self.addEventListener("notificationclose", (_event) => {
+  // User dismissed without clicking — could track in analytics in future
+  // No network call here to avoid waking the device unnecessarily
+});
