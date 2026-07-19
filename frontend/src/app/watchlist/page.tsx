@@ -102,8 +102,14 @@ export default function WatchlistPage() {
       setRemoveTarget(null);
 
       if (!isOnline) {
-        await queueAction("WATCHLIST_REMOVE", `/watchlist/${removeTarget.player_id}`, "DELETE");
-        addToast("info", `${removeTarget.full_name} will be removed when you reconnect.`);
+        const queued = await queueAction("WATCHLIST_REMOVE", `/watchlist/${removeTarget.player_id}`, "DELETE");
+        if (queued) {
+          addToast("info", `${removeTarget.full_name} will be removed when you reconnect.`);
+        } else {
+          // Enqueue failed — restore player in list
+          addToast("error", "Could not save change. Try again when online.");
+          load();
+        }
       } else {
         await api.delete(`/watchlist/${removeTarget.player_id}`);
         addToast("success", `${removeTarget.full_name} removed from watchlist.`);

@@ -225,12 +225,22 @@ export default function PlayersPage() {
 
     try {
       if (!isOnline) {
+        let queued;
         if (isWatched) {
-          await queueAction("WATCHLIST_REMOVE", `/watchlist/${playerId}`, "DELETE");
-          addToast("info", `${playerName} will be removed when you reconnect.`);
+          queued = await queueAction("WATCHLIST_REMOVE", `/watchlist/${playerId}`, "DELETE");
+          if (queued) addToast("info", `${playerName} will be removed when you reconnect.`);
         } else {
-          await queueAction("WATCHLIST_ADD", "/watchlist", "POST", { player_id: playerId });
-          addToast("info", `${playerName} will be added when you reconnect.`);
+          queued = await queueAction("WATCHLIST_ADD", "/watchlist", "POST", { player_id: playerId });
+          if (queued) addToast("info", `${playerName} will be added when you reconnect.`);
+        }
+        // If enqueue failed (e.g. IndexedDB unavailable), revert the optimistic update
+        if (!queued) {
+          setWatchedIds((prev) => {
+            const next = new Set(prev);
+            isWatched ? next.add(playerId) : next.delete(playerId);
+            return next;
+          });
+          addToast("error", "Could not save change. Try again when online.");
         }
         return;
       }
@@ -316,7 +326,14 @@ export default function PlayersPage() {
               {remaining} / {budgetCap} credits
             </p>
           </div>
-          <div className="w-1/2 h-2 bg-[#1f2733] rounded overflow-hidden">
+          <div
+        role="progressbar"
+        aria-label="Budget remaining"
+        aria-valuenow={spent}
+        aria-valuemin={0}
+        aria-valuemax={budgetCap}
+        className="w-1/2 h-2 bg-[#1f2733] rounded overflow-hidden"
+      >
             <div className={`h-full ${spent > budgetCap ? "bg-red-500" : "bg-court-orange"}`} style={{ width: `${Math.min((spent / budgetCap) * 100, 100)}%` }} />
           </div>
         </div>
@@ -417,8 +434,7 @@ export default function PlayersPage() {
                       ? "text-court-orange bg-court-orange/10"
                       : "text-gray-500 hover:text-court-orange"
                   }`}
-                  aria-label={watchedIds.has(p.player_id) ? `Unwatch ${p.full_name}` : `Watch ${p.full_name}`}
-                >
+                  aria-label={watchedIds.has(p.player_id) ? `Unwatch ${p.full_name}` : `Watch ${p.full_name}`}                >
                   {watchedIds.has(p.player_id) ? "♥ Watching" : "♡ Watch"}
                 </button>
               )}

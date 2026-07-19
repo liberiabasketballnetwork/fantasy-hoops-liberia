@@ -25,7 +25,21 @@ export default function LeaderboardPage() {
     );
   }
 
-  if (loading) return <p className="text-center text-gray-400">Loading leaderboard...</p>;
+  if (loading) return (
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading leaderboard">
+      <div className="skeleton h-8 w-56" />
+      <div className="card p-4 flex flex-col gap-3">
+        {[...Array(8)].map((_, i) => (
+          <div key={i} className="flex items-center gap-3 py-1">
+            <div className="skeleton w-6 h-4 flex-shrink-0" />
+            <div className="skeleton w-8 h-8 rounded-full flex-shrink-0" />
+            <div className="skeleton flex-1 h-4" />
+            <div className="skeleton w-14 h-4 flex-shrink-0" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex flex-col gap-5">

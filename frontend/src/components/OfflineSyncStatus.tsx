@@ -82,6 +82,7 @@ export default function OfflineSyncStatus() {
                     ${pill?.cls ?? "bg-[#1f2733] text-gray-400 border border-[#2a3441]"}
                     animate-[fadeSlideIn_300ms_ease-out]`}
         aria-label="Offline sync status"
+        aria-expanded={open}
       >
         {syncStatus === "syncing" && (
           <span className="inline-block w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />

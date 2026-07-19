@@ -66,3 +66,28 @@ body {
   from { opacity: 0; transform: translateY(8px); }
   to   { opacity: 1; transform: translateY(0);   }
 }
+
+/* ─── Skeleton shimmer ────────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    #1f2733 25%,
+    #2a3441 50%,
+    #1f2733 75%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+  border-radius: 0.375rem;
+}
+
+/* ─── Reduced motion ──────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton           { animation: none; background: #1f2733; }
+  .animate-spin       { animation: none; }
+  .animate-ping       { animation: none; }
+  [class*="animate-"] { animation: none !important; }
+}

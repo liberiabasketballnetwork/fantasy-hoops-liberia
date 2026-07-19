@@ -6,6 +6,7 @@ import Navbar from "@/components/Navbar";
 import OfflineBanner from "@/components/OfflineBanner";
 import UpdateBanner from "@/components/UpdateBanner";
 import OfflineSyncStatus from "@/components/OfflineSyncStatus";
+import ErrorBoundary from "@/components/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: {
@@ -57,14 +58,16 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <PWAProvider>
-            <OfflineBanner />
-            <Navbar />
-            <main className="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]">{children}</main>
-            <footer className="text-center text-xs text-gray-500 py-6 border-t border-[#1f2733]">
-              🇱🇷 Built for Liberian basketball fans — Fantasy Hoops Liberia © {new Date().getFullYear()}
-            </footer>
-            <UpdateBanner />
-            <OfflineSyncStatus />
+            <ErrorBoundary>
+              <OfflineBanner />
+              <Navbar />
+              <main className="max-w-6xl mx-auto px-4 py-6 min-h-[80vh]">{children}</main>
+              <footer className="text-center text-xs text-gray-500 py-6 border-t border-[#1f2733]">
+                🇱🇷 Built for Liberian basketball fans — Fantasy Hoops Liberia © {new Date().getFullYear()}
+              </footer>
+              <UpdateBanner />
+              <OfflineSyncStatus />
+            </ErrorBoundary>
           </PWAProvider>
         </AuthProvider>
       </body>

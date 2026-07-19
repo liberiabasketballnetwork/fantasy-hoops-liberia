@@ -70,10 +70,31 @@ export default function DashboardPage() {
   }, [loading, user]);
 
   if (loading || fetching) return (
-    <div className="flex items-center justify-center min-h-[40vh]">
-      <div className="flex flex-col items-center gap-3">
-        <div className="w-10 h-10 rounded-full border-4 border-[#1f2733] border-t-court-orange animate-spin" />
-        <p className="text-sm text-gray-400">Loading dashboard...</p>
+    <div className="flex flex-col gap-5" aria-busy="true" aria-label="Loading dashboard">
+      {/* Greeting skeleton */}
+      <div className="skeleton h-8 w-48" />
+      {/* Lineup card skeleton */}
+      <div className="card p-5 flex flex-col gap-3">
+        <div className="skeleton h-5 w-36" />
+        <div className="grid grid-cols-5 gap-2">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="flex flex-col gap-2 items-center">
+              <div className="skeleton w-12 h-12 rounded-full" />
+              <div className="skeleton h-3 w-full" />
+            </div>
+          ))}
+        </div>
+      </div>
+      {/* Leaderboard preview skeleton */}
+      <div className="card p-5 flex flex-col gap-3">
+        <div className="skeleton h-5 w-32" />
+        {[...Array(4)].map((_, i) => (
+          <div key={i} className="flex items-center gap-3">
+            <div className="skeleton w-6 h-4" />
+            <div className="skeleton flex-1 h-4" />
+            <div className="skeleton w-12 h-4" />
+          </div>
+        ))}
       </div>
     </div>
   );

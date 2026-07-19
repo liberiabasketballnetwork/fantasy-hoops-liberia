@@ -64,7 +64,7 @@ function ChromiumCard({ onInstall, onLater, onDismiss }: {
         </button>
         <button
           onClick={onLater}
-          className="text-xs text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-court-orange rounded"
+          className="text-xs text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-court-orange rounded min-h-[44px] px-3"
         >
           Maybe Later
         </button>
@@ -133,7 +133,7 @@ function IOSCard({ onGotIt, onLater, onDismiss }: {
         <button onClick={onGotIt} className="btn-primary text-sm">Got It</button>
         <button
           onClick={onLater}
-          className="text-xs text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-court-orange rounded"
+          className="text-xs text-gray-400 hover:text-gray-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-court-orange rounded min-h-[44px] px-3"
         >
           Maybe Later
         </button>

@@ -275,15 +275,21 @@ export function useOfflineSync() {
     endpoint: string,
     method: Q.QueueOperation["method"],
     payload?: Record<string, unknown>
-  ): Promise<Q.QueueOperation> {
-    const op = await Q.enqueue(action, endpoint, method, payload);
-    await refreshCount();
-    await registerBackgroundSync();
-    // Also attempt immediate sync if online
-    if (isOnline && token) {
-      triggerSync();
+  ): Promise<Q.QueueOperation | null> {
+    try {
+      const op = await Q.enqueue(action, endpoint, method, payload);
+      await refreshCount();
+      await registerBackgroundSync();
+      // Also attempt immediate sync if online
+      if (isOnline && token) {
+        triggerSync();
+      }
+      return op;
+    } catch (err: any) {
+      console.error("[OfflineSync] enqueue failed — optimistic update may not persist:", err?.message);
+      // Return null so callers can detect failure and revert optimistic UI
+      return null;
     }
-    return op;
   }
 
   return {
