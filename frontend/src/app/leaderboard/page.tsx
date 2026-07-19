@@ -73,7 +73,7 @@ export default function LeaderboardPage() {
               {data.leaderboard.map((row: any) => (
                 <tr key={row.leaderboard_id} className="border-t border-[#1f2733]">
                   <td className="p-3">#{row.rank}</td>
-                  <td className="p-3">{row.full_name}</td>
+                  <td className="p-3">{(row as any).display_name || "Unknown"}</td>
                   <td className="p-3 text-right font-bold text-court-orange">{row.score}</td>
                 </tr>
               ))}
