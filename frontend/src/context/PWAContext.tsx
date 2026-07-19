@@ -17,21 +17,27 @@ interface BeforeInstallPromptEvent extends Event {
 }
 
 interface PWAContextType {
-  canInstall: boolean;          // browser captured beforeinstallprompt
-  isInstalled: boolean;         // running in standalone mode or appinstalled fired
-  isIOS: boolean;               // iOS Safari — manual install flow
-  triggerInstall: () => Promise<"accepted" | "dismissed" | "unavailable">;
-  deferredPrompt: BeforeInstallPromptEvent | null;
+  canInstall:      boolean;
+  isInstalled:     boolean;
+  isIOS:           boolean;
+  isOnline:        boolean;
+  updateAvailable: boolean;
+  triggerInstall:  () => Promise<"accepted" | "dismissed" | "unavailable">;
+  applyUpdate:     () => void;
+  deferredPrompt:  BeforeInstallPromptEvent | null;
 }
 
 // ─── Context ──────────────────────────────────────────────────────────────────
 
 const PWAContext = createContext<PWAContextType>({
-  canInstall: false,
-  isInstalled: false,
-  isIOS: false,
-  triggerInstall: async () => "unavailable",
-  deferredPrompt: null,
+  canInstall:      false,
+  isInstalled:     false,
+  isIOS:           false,
+  isOnline:        true,
+  updateAvailable: false,
+  triggerInstall:  async () => "unavailable",
+  applyUpdate:     () => {},
+  deferredPrompt:  null,
 });
 
 export function usePWA() {
@@ -41,13 +47,23 @@ export function usePWA() {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function PWAProvider({ children }: { children: ReactNode }) {
-  const [canInstall, setCanInstall] = useState(false);
-  const [isInstalled, setIsInstalled] = useState(false);
-  const [isIOS, setIsIOS] = useState(false);
+  const [canInstall,      setCanInstall]      = useState(false);
+  const [isInstalled,     setIsInstalled]     = useState(false);
+  const [isIOS,           setIsIOS]           = useState(false);
+  const [isOnline,        setIsOnline]        = useState(true);
+  const [updateAvailable, setUpdateAvailable] = useState(false);
   const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
+  const swRegistrationRef = useRef<ServiceWorkerRegistration | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+
+    // ── Online / offline detection ──────────────────────────────────────────
+    setIsOnline(navigator.onLine);
+    const handleOnline  = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener("online",  handleOnline);
+    window.addEventListener("offline", handleOffline);
 
     // ── Detect iOS Safari ───────────────────────────────────────────────────
     const ua = navigator.userAgent;
@@ -59,27 +75,68 @@ export function PWAProvider({ children }: { children: ReactNode }) {
     const standaloneNav   = (navigator as any).standalone === true;
     if (standaloneMedia || standaloneNav) {
       setIsInstalled(true);
-      return; // no need to capture install prompt
     }
 
-    // ── Capture beforeinstallprompt ─────────────────────────────────────────
+    // ── Register Service Worker ─────────────────────────────────────────────
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("/sw.js", { scope: "/" })
+        .then((registration) => {
+          swRegistrationRef.current = registration;
+
+          // If a new SW is already waiting on page load, surface it immediately
+          if (registration.waiting) {
+            setUpdateAvailable(true);
+          }
+
+          // Listen for a new SW entering the waiting state
+          registration.addEventListener("updatefound", () => {
+            const newSW = registration.installing;
+            if (!newSW) return;
+            newSW.addEventListener("statechange", () => {
+              if (newSW.state === "installed" && navigator.serviceWorker.controller) {
+                // New SW installed, old SW still controlling — update available
+                setUpdateAvailable(true);
+              }
+            });
+          });
+        })
+        .catch((err) => {
+          console.warn("[PWAContext] Service worker registration failed:", err);
+        });
+
+      // Listen for messages from the SW (UPDATE_AVAILABLE, SW_ACTIVATED)
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data?.type === "UPDATE_AVAILABLE") setUpdateAvailable(true);
+        if (event.data?.type === "SW_ACTIVATED")    setUpdateAvailable(false);
+      });
+
+      // Detect when the controlling SW changes (after skipWaiting + claim)
+      let refreshing = false;
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (!refreshing) {
+          refreshing = true;
+          window.location.reload();
+        }
+      });
+    }
+
+    // ── Install prompt ──────────────────────────────────────────────────────
     const handleBeforeInstall = (e: Event) => {
-      e.preventDefault(); // suppress default browser prompt
+      e.preventDefault();
       deferredPromptRef.current = e as BeforeInstallPromptEvent;
       setCanInstall(true);
     };
-
-    // ── Detect when install completes ───────────────────────────────────────
     const handleAppInstalled = () => {
       deferredPromptRef.current = null;
       setCanInstall(false);
       setIsInstalled(true);
     };
-
     window.addEventListener("beforeinstallprompt", handleBeforeInstall);
     window.addEventListener("appinstalled", handleAppInstalled);
 
     return () => {
+      window.removeEventListener("online",  handleOnline);
+      window.removeEventListener("offline", handleOffline);
       window.removeEventListener("beforeinstallprompt", handleBeforeInstall);
       window.removeEventListener("appinstalled", handleAppInstalled);
     };
@@ -101,13 +158,25 @@ export function PWAProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  // ── Apply update (tell waiting SW to take control) ────────────────────────
+
+  function applyUpdate() {
+    const reg = swRegistrationRef.current;
+    if (reg?.waiting) {
+      reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+  }
+
   return (
     <PWAContext.Provider
       value={{
         canInstall,
         isInstalled,
         isIOS,
+        isOnline,
+        updateAvailable,
         triggerInstall,
+        applyUpdate,
         deferredPrompt: deferredPromptRef.current,
       }}
     >

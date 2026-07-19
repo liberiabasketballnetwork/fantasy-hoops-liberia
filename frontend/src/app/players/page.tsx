@@ -4,12 +4,14 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { usePWA } from "@/context/PWAContext";
 import { AppModal, LoadingOverlay, PriceBadge, FormBadge, Last5Sparkline, ToastContainer, useToast } from "@/components/ui";
 
 const MAX_PLAYERS_PER_TEAM = 2;
 
 export default function PlayersPage() {
   const { user, loading } = useAuth();
+  const { isOnline } = usePWA();
   const router = useRouter();
   const { toasts, toast: addToast, dismiss: removeToast } = useToast();
   const [players, setPlayers] = useState<any[]>([]);
@@ -406,14 +408,23 @@ export default function PlayersPage() {
       {/* HOTFIX-006A: submit button replaced with confirmation when already submitted */}
       <button
         onClick={alreadySubmitted ? undefined : submitLineup}
-        disabled={submitting || alreadySubmitted}
+        disabled={submitting || alreadySubmitted || !isOnline}
         className={`w-fit font-semibold px-5 py-2 rounded transition-colors ${
           alreadySubmitted
             ? "bg-court-green/20 text-court-green border border-court-green/40 cursor-default"
+            : !isOnline
+            ? "bg-[#1f2733] text-gray-500 cursor-not-allowed"
             : "btn-primary"
         }`}
+        title={!isOnline ? "No connection — submit when you're back online" : undefined}
       >
-        {submitting ? "Submitting..." : alreadySubmitted ? "✓ Lineup Submitted" : "Submit Lineup"}
+        {submitting
+          ? "Submitting..."
+          : alreadySubmitted
+          ? "✓ Lineup Submitted"
+          : !isOnline
+          ? "⚡ Offline"
+          : "Submit Lineup"}
       </button>
     </div>
   );
