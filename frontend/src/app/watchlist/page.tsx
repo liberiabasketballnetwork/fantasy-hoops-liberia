@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
+import { usePWA } from "@/context/PWAContext";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { PriceBadge, FormBadge, Last5Sparkline, ConfirmDialog, ToastContainer, useToast } from "@/components/ui";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -61,6 +63,8 @@ const INSIGHT_COLORS: Record<string, string> = {
 
 export default function WatchlistPage() {
   const { user, loading: authLoading } = useAuth();
+  const { isOnline } = usePWA();
+  const { queueAction } = useOfflineSync();
   const { toasts, toast: addToast, dismiss: removeToast } = useToast();
   const [players, setPlayers] = useState<WatchedPlayer[]>([]);
   const [teams, setTeams] = useState<Record<string, string>>({});
@@ -93,11 +97,19 @@ export default function WatchlistPage() {
     if (!removeTarget) return;
     setRemoving(true);
     try {
-      await api.delete(`/watchlist/${removeTarget.player_id}`);
+      // Optimistic UI — remove immediately regardless of connectivity
       setPlayers((prev) => prev.filter((p) => p.player_id !== removeTarget.player_id));
-      addToast("success", `${removeTarget.full_name} removed from watchlist.`);
       setRemoveTarget(null);
+
+      if (!isOnline) {
+        await queueAction("WATCHLIST_REMOVE", `/watchlist/${removeTarget.player_id}`, "DELETE");
+        addToast("info", `${removeTarget.full_name} will be removed when you reconnect.`);
+      } else {
+        await api.delete(`/watchlist/${removeTarget.player_id}`);
+        addToast("success", `${removeTarget.full_name} removed from watchlist.`);
+      }
     } catch (err: any) {
+      // Rollback optimistic update on live-request failure only
       addToast("error", err?.response?.data?.error || "Failed to remove player.");
     } finally {
       setRemoving(false);

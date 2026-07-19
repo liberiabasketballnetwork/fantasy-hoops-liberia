@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 import { usePWA } from "@/context/PWAContext";
+import { useOfflineSync } from "@/hooks/useOfflineSync";
 import { AppModal, LoadingOverlay, PriceBadge, FormBadge, Last5Sparkline, ToastContainer, useToast } from "@/components/ui";
 
 const MAX_PLAYERS_PER_TEAM = 2;
@@ -12,6 +13,7 @@ const MAX_PLAYERS_PER_TEAM = 2;
 export default function PlayersPage() {
   const { user, loading } = useAuth();
   const { isOnline } = usePWA();
+  const { queueAction } = useOfflineSync();
   const router = useRouter();
   const { toasts, toast: addToast, dismiss: removeToast } = useToast();
   const [players, setPlayers] = useState<any[]>([]);
@@ -213,17 +215,40 @@ export default function PlayersPage() {
 
   async function toggleWatch(playerId: string, playerName: string) {
     const isWatched = watchedIds.has(playerId);
+
+    // Optimistic UI — update immediately
+    setWatchedIds((prev) => {
+      const next = new Set(prev);
+      isWatched ? next.delete(playerId) : next.add(playerId);
+      return next;
+    });
+
     try {
+      if (!isOnline) {
+        if (isWatched) {
+          await queueAction("WATCHLIST_REMOVE", `/watchlist/${playerId}`, "DELETE");
+          addToast("info", `${playerName} will be removed when you reconnect.`);
+        } else {
+          await queueAction("WATCHLIST_ADD", "/watchlist", "POST", { player_id: playerId });
+          addToast("info", `${playerName} will be added when you reconnect.`);
+        }
+        return;
+      }
+
       if (isWatched) {
         await api.delete(`/watchlist/${playerId}`);
-        setWatchedIds((prev) => { const next = new Set(prev); next.delete(playerId); return next; });
         addToast("info", `${playerName} removed from watchlist.`);
       } else {
         await api.post("/watchlist", { player_id: playerId });
-        setWatchedIds((prev) => new Set([...prev, playerId]));
         addToast("success", `${playerName} added to watchlist!`);
       }
     } catch (err: any) {
+      // Rollback optimistic update on live-request failure
+      setWatchedIds((prev) => {
+        const next = new Set(prev);
+        isWatched ? next.add(playerId) : next.delete(playerId);
+        return next;
+      });
       addToast("error", err?.response?.data?.error || "Could not update watchlist.");
     }
   }

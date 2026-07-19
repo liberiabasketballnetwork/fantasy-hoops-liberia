@@ -332,3 +332,24 @@ self.addEventListener("notificationclose", (_event) => {
   // User dismissed without clicking — could track in analytics in future
   // No network call here to avoid waking the device unnecessarily
 });
+
+// ─── Background Sync (PWA-004) ────────────────────────────────────────────────
+// Fires when device reconnects, even if the app is closed.
+// Supported: Chrome on Android (~65% of platform's target users).
+// Fallback: gracefully ignored on unsupported browsers.
+
+self.addEventListener("sync", (event) => {
+  if (event.tag !== "fhl-offline-sync") return;
+
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      if (clients.length > 0) {
+        // App is open — tell it to trigger the sync engine
+        clients.forEach((client) => {
+          client.postMessage({ type: "BACKGROUND_SYNC_REQUESTED" });
+        });
+      }
+      // If no client windows are open, the sync engine will run on next app launch
+    })
+  );
+});

@@ -5,6 +5,7 @@ import { PWAProvider } from "@/context/PWAContext";
 import Navbar from "@/components/Navbar";
 import OfflineBanner from "@/components/OfflineBanner";
 import UpdateBanner from "@/components/UpdateBanner";
+import OfflineSyncStatus from "@/components/OfflineSyncStatus";
 
 export const metadata: Metadata = {
   title: {
@@ -63,6 +64,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
               🇱🇷 Built for Liberian basketball fans — Fantasy Hoops Liberia © {new Date().getFullYear()}
             </footer>
             <UpdateBanner />
+            <OfflineSyncStatus />
           </PWAProvider>
         </AuthProvider>
       </body>
