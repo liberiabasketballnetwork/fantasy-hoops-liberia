@@ -8,6 +8,7 @@ import {
   BADGE_CATALOG,
 } from "../services/achievementService";
 import { dispatchAchievementNotifications } from "../services/achievementNotificationProducer";
+import { dispatchWeeklyReportNotifications } from "../services/weeklyReportNotificationProducer";
 
 const router = express.Router();
 
@@ -55,6 +56,17 @@ router.post(
       dispatchAchievementNotifications(result.awarded, workflow_id).catch((err) => {
         console.error("[achievementRoutes] Achievement producer dispatch error:", err);
       });
+
+      // Fire-and-forget: weekly report notification — NOTIFY-005
+      // Runs after badge evaluation so reports can include badge data.
+      // Never delays the HTTP response; errors are logged only.
+      (async () => {
+        try {
+          await dispatchWeeklyReportNotifications(weekId, workflow_id);
+        } catch (err: any) {
+          console.error("[achievementRoutes] Weekly report producer error:", err?.message || err);
+        }
+      })();
 
       res.json({
         message: `Achievement evaluation complete. ${result.awarded.length} badge${result.awarded.length !== 1 ? "s" : ""} awarded.`,
