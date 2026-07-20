@@ -58,6 +58,10 @@ export default function AdminPage() {
   const [auditResult,     setAuditResult]     = useState<any>(null);
   const [auditLoading,    setAuditLoading]    = useState(false);
 
+  // ADMIN-010: Mismatch Investigation Console
+  const [investigationResult, setInvestigationResult] = useState<any>(null);
+  const [investigatingUserId, setInvestigatingUserId] = useState<string | null>(null);
+
   // UX-001: Users refresh state
   const [usersRefreshing, setUsersRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -533,6 +537,241 @@ export default function AdminPage() {
     URL.revokeObjectURL(url);
   }
 
+  // ── ADMIN-010: Mismatch Investigation Console ──────────────────────────────
+
+  async function runInvestigation(targetUserId: string) {
+    if (!verifyWeekId) return;
+    setInvestigatingUserId(targetUserId);
+    setInvestigationResult(null);
+
+    try {
+      const [lineupsRes, lpRes, statsRes, lbRes, gamesRes, weekRes, usersRes, playersRes] = await Promise.all([
+        api.get("/admin/data/user-lineups"),
+        api.get("/admin/data/lineup-players"),
+        api.get("/admin/data/player-stats"),
+        api.get("/admin/data/leaderboard"),
+        api.get("/admin/data/games"),
+        api.get("/admin/data/weekly-gameweek"),
+        api.get("/admin/users"),
+        api.get("/players"),
+      ]);
+
+      const lineup = (lineupsRes.data.rows || []).find(
+        (l: any) => l.user_id === targetUserId && l.week_id === verifyWeekId
+      );
+      if (!lineup) { setInvestigationResult({ error: "No lineup found." }); return; }
+
+      const week = (weekRes.data.rows || []).find((w: any) => w.week_id === verifyWeekId);
+      const startDate = week ? new Date(week.start_date) : null;
+      const endDate   = week ? new Date(week.end_date)   : null;
+      if (endDate) endDate.setHours(23, 59, 59, 999);
+
+      const allGames: any[] = gamesRes.data.rows || [];
+      const validGameIds = new Set(
+        allGames.filter((g: any) => {
+          if (String(g.status).toLowerCase() !== "completed") return false;
+          if (!startDate || !endDate) return true;
+          const d = new Date(g.game_date);
+          return d >= startDate && d <= endDate;
+        }).map((g: any) => g.game_id)
+      );
+
+      const lpRows = (lpRes.data.rows || []).filter((lp: any) => lp.lineup_id === lineup.lineup_id);
+      const lineupPlayerIds: string[] = lpRows.map((lp: any) => lp.player_id);
+      const allStats: any[] = statsRes.data.rows || [];
+      const playerMap = new Map((playersRes.data.players || []).map((p: any) => [p.player_id, p]));
+      const userRow = (usersRes.data.users || []).find((u: any) => u.user_id === targetUserId);
+
+      // ── Per-player investigation ──────────────────────────────────────────
+      const playerInvestigations = lineupPlayerIds.map((pid: string) => {
+        const player: any = playerMap.get(pid);
+        const isCaptain   = pid === lineup.captain_player_id;
+
+        // All stat rows for this player in valid games
+        const validStats = allStats.filter(
+          (s: any) => s.player_id === pid && validGameIds.has(s.game_id)
+        );
+        // All stat rows including OUT OF SCOPE (for stale cache detection)
+        const allPlayerStats = allStats.filter((s: any) => s.player_id === pid);
+        const outOfScopeStats = allPlayerStats.filter(
+          (s: any) => !validGameIds.has(s.game_id)
+        );
+
+        // Aggregate raw stats across valid games
+        const agg = validStats.reduce(
+          (acc: any, s: any) => ({
+            points:    acc.points    + Number(s.points    || 0),
+            rebounds:  acc.rebounds  + Number(s.rebounds  || 0),
+            assists:   acc.assists   + Number(s.assists   || 0),
+            steals:    acc.steals    + Number(s.steals    || 0),
+            blocks:    acc.blocks    + Number(s.blocks    || 0),
+            turnovers: acc.turnovers + Number(s.turnovers || 0),
+          }),
+          { points:0, rebounds:0, assists:0, steals:0, blocks:0, turnovers:0 }
+        );
+
+        const baseFP      = calcFP(agg);
+        const captainMult = isCaptain ? SCORING.CAPTAIN : 1;
+        const finalFP     = baseFP * captainMult;
+
+        // Stale cache detection — check stored vs canonical on each stat row
+        const staleCacheIssues = validStats.filter((s: any) => {
+          const storedFP  = Number(s.fantasy_points || 0);
+          const rowFP     = calcFP({
+            points:s.points, rebounds:s.rebounds, assists:s.assists,
+            steals:s.steals, blocks:s.blocks, turnovers:s.turnovers,
+          });
+          return Math.abs(storedFP - rowFP) > 0.01;
+        }).map((s: any) => ({
+          stat_id: s.stat_id, game_id: s.game_id,
+          stored:  Number(s.fantasy_points || 0),
+          canonical: calcFP({ points:s.points, rebounds:s.rebounds, assists:s.assists, steals:s.steals, blocks:s.blocks, turnovers:s.turnovers }),
+        }));
+
+        return {
+          pid, player_name: player?.full_name || pid, position: player?.position,
+          team: player?.team_id, isCaptain, captainMult,
+          agg, baseFP, finalFP,
+          validStats: validStats.map((s: any) => ({
+            stat_id: s.stat_id, game_id: s.game_id,
+            points:s.points, rebounds:s.rebounds, assists:s.assists,
+            steals:s.steals, blocks:s.blocks, turnovers:s.turnovers,
+            stored_fp: Number(s.fantasy_points || 0),
+            canonical_fp: calcFP({ points:s.points, rebounds:s.rebounds, assists:s.assists, steals:s.steals, blocks:s.blocks, turnovers:s.turnovers }),
+          })),
+          outOfScopeCount: outOfScopeStats.length,
+          outOfScopeStats: outOfScopeStats.map((s: any) => ({
+            stat_id: s.stat_id, game_id: s.game_id,
+            stored_fp: Number(s.fantasy_points || 0),
+          })),
+          staleCacheIssues,
+          isDNP: validStats.length === 0,
+        };
+      });
+
+      // ── Lineup integrity ──────────────────────────────────────────────────
+      const integrityIssues: string[] = [];
+      if (lineupPlayerIds.length !== 5)
+        integrityIssues.push(`Lineup has ${lineupPlayerIds.length} players (expected 5)`);
+      if (!lineup.captain_player_id)
+        integrityIssues.push("No captain assigned");
+      if (lineup.captain_player_id && !lineupPlayerIds.includes(lineup.captain_player_id))
+        integrityIssues.push("Captain is not in the lineup");
+
+      // Team limit check (max 2 per team)
+      const teamCounts: Record<string, number> = {};
+      for (const pi of playerInvestigations) {
+        const tid = pi.team || "unknown";
+        teamCounts[tid] = (teamCounts[tid] || 0) + 1;
+      }
+      for (const [tid, count] of Object.entries(teamCounts)) {
+        if (count > 2) integrityIssues.push(`Team ${tid} has ${count} players (max 2)`);
+      }
+
+      // ── Totals ─────────────────────────────────────────────────────────────
+      const calculatedTotal = playerInvestigations.reduce((s: number, p: any) => s + p.finalFP, 0);
+      const lbEntry = (lbRes.data.rows || []).find(
+        (r: any) => r.user_id === targetUserId && r.week_id === verifyWeekId
+      );
+      const lbScore = lbEntry ? Number(lbEntry.score) : null;
+      const diff    = lbScore !== null ? Math.round((calculatedTotal - lbScore) * 100) / 100 : null;
+
+      // ── Root cause analysis ────────────────────────────────────────────────
+      const rootCauses: string[] = [];
+      const totalStaleIssues = playerInvestigations.reduce(
+        (n: number, p: any) => n + p.staleCacheIssues.length, 0
+      );
+      const dnpCount = playerInvestigations.filter((p: any) => p.isDNP).length;
+      const outOfScopeTotal = playerInvestigations.reduce(
+        (n: number, p: any) => n + p.outOfScopeCount, 0
+      );
+
+      if (diff !== null && Math.abs(diff) > 0.01) {
+        if (totalStaleIssues > 0)
+          rootCauses.push(`${totalStaleIssues} stat row(s) have stale Player_Stats.fantasy_points values from the pre-ARCH-001 importer. The leaderboard score may have been written using old cached values.`);
+        if (outOfScopeTotal > 0)
+          rootCauses.push(`${outOfScopeTotal} stat row(s) exist outside the week date range. If these were included in a previous calculation run, the leaderboard score is inflated.`);
+        if (dnpCount > 0)
+          rootCauses.push(`${dnpCount} player(s) have no stats in this week's valid games (DNP). They contributed 0 FP.`);
+        if (Math.abs(diff) > 0 && rootCauses.length === 0)
+          rootCauses.push(`Difference of ${diff.toFixed(2)} detected but no automatic cause found. Manual review of Player_Stats and Leaderboard rows recommended.`);
+      } else if (diff !== null && Math.abs(diff) <= 0.01) {
+        rootCauses.push("Score verified. Calculated total matches leaderboard exactly.");
+      }
+      if (integrityIssues.length > 0)
+        rootCauses.push(...integrityIssues.map((i: string) => `Lineup integrity: ${i}`));
+
+      setInvestigationResult({
+        userName: userRow?.display_name || userRow?.full_name || targetUserId,
+        user_id: targetUserId,
+        lineup_id: lineup.lineup_id,
+        captain_player_id: lineup.captain_player_id,
+        week_id: verifyWeekId,
+        players: playerInvestigations,
+        calculatedTotal: Math.round(calculatedTotal * 100) / 100,
+        lbScore, diff,
+        verified: diff !== null && Math.abs(diff) < 0.01,
+        integrityIssues,
+        rootCauses,
+        totalStaleIssues,
+        generatedAt: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      setInvestigationResult({ error: err?.message || "Investigation failed." });
+    } finally {
+      setInvestigatingUserId(null);
+    }
+  }
+
+  function downloadInvestigationReport() {
+    const inv = investigationResult;
+    if (!inv || inv.error) return;
+    const lines = [
+      "FANTASY HOOPS LIBERIA — MISMATCH INVESTIGATION REPORT",
+      `Generated : ${new Date(inv.generatedAt).toLocaleString()}`,
+      `Manager   : ${inv.userName} (${inv.user_id})`,
+      `Week ID   : ${inv.week_id}`,
+      `Lineup ID : ${inv.lineup_id}`,
+      `Captain   : ${inv.captain_player_id}`,
+      "",
+      "═══ PIPELINE TRACE ══════════════════════════════════════════════════════",
+      "",
+      ...inv.players.flatMap((p: any) => [
+        `Player: ${p.player_name} ${p.isCaptain ? "[CAPTAIN ×2]" : ""}`,
+        `  Player ID   : ${p.pid}`,
+        `  Games in scope: ${p.validStats.map((s: any) => s.game_id).join(", ") || "none (DNP)"}`,
+        `  Aggregated  : PTS=${p.agg.points} REB=${p.agg.rebounds} AST=${p.agg.assists} STL=${p.agg.steals} BLK=${p.agg.blocks} TO=${p.agg.turnovers}`,
+        `  Base FP     : ${p.baseFP.toFixed(2)}`,
+        `  Captain Mult: ×${p.captainMult}`,
+        `  Final FP    : ${p.finalFP.toFixed(2)}`,
+        ...(p.staleCacheIssues.length > 0 ? [
+          `  ⚠ STALE CACHE DETECTED:`,
+          ...p.staleCacheIssues.map((sc: any) =>
+            `    Stat ${sc.stat_id}: stored=${sc.stored.toFixed(2)} canonical=${sc.canonical.toFixed(2)} diff=${(sc.canonical - sc.stored).toFixed(2)}`
+          ),
+        ] : []),
+        ...(p.outOfScopeCount > 0 ? [`  ⚠ ${p.outOfScopeCount} stat row(s) exist OUTSIDE the week window`] : []),
+        "",
+      ]),
+      "═══ SUMMARY ═════════════════════════════════════════════════════════════",
+      `Calculated Total : ${inv.calculatedTotal.toFixed(2)}`,
+      `Leaderboard Score: ${inv.lbScore !== null ? inv.lbScore.toFixed(2) : "N/A"}`,
+      `Difference       : ${inv.diff !== null ? (inv.diff >= 0 ? "+" : "") + inv.diff.toFixed(2) : "N/A"}`,
+      `Result           : ${inv.verified ? "✅ VERIFIED" : "❌ MISMATCH"}`,
+      "",
+      "═══ ROOT CAUSE ANALYSIS ═════════════════════════════════════════════════",
+      ...inv.rootCauses.map((c: string, i: number) => `${i+1}. ${c}`),
+      ...(inv.integrityIssues.length > 0 ? ["", "Integrity Issues:", ...inv.integrityIssues.map((x: string) => `• ${x}`)] : []),
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `fhl-investigation-${inv.userName.replace(/\s+/g,"-")}-${inv.week_id.slice(0,8)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
   if (loading || !user) return null;
 
   return (
@@ -982,6 +1221,7 @@ export default function AdminPage() {
                     <th className="text-right py-2 px-2">Leaderboard</th>
                     <th className="text-right py-2 px-2">Diff</th>
                     <th className="text-right py-2 pl-2">Status</th>
+                    <th className="text-right py-2 pl-2"></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -994,6 +1234,17 @@ export default function AdminPage() {
                         {r.diff !== null ? (r.diff >= 0 ? "+" : "") + r.diff.toFixed(2) : "—"}
                       </td>
                       <td className="text-right py-2 pl-2">{r.verified ? "✅" : "❌"}</td>
+                      <td className="text-right py-2 pl-2">
+                        {!r.verified && (
+                          <button
+                            onClick={() => runInvestigation(r.user_id)}
+                            disabled={investigatingUserId === r.user_id}
+                            className="px-2 py-1 rounded bg-yellow-900/40 border border-yellow-700/50 text-yellow-400 text-[10px] font-semibold hover:bg-yellow-900/60 disabled:opacity-50"
+                          >
+                            {investigatingUserId === r.user_id ? "…" : "🔎 Investigate"}
+                          </button>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -1002,6 +1253,137 @@ export default function AdminPage() {
           </div>
         )}
         {auditResult?.error && <p className="text-sm text-red-400 mt-3">❌ {auditResult.error}</p>}
+
+        {/* ADMIN-010: Investigation panel */}
+        {investigationResult && !investigationResult.error && (
+          <div className="mt-5 border-t border-yellow-700/30 pt-5 flex flex-col gap-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <div>
+                <h3 className="font-bold text-sm">🔎 Investigation: {investigationResult.userName}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">Pipeline trace from raw stats → leaderboard</p>
+              </div>
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${investigationResult.verified ? "bg-court-green/15 text-court-green" : "bg-red-500/15 text-red-400"}`}>
+                {investigationResult.verified ? "✅ VERIFIED" : `❌ MISMATCH ${investigationResult.diff >= 0 ? "+" : ""}${investigationResult.diff?.toFixed(2)}`}
+              </span>
+            </div>
+
+            {/* Player pipeline cards */}
+            <div className="flex flex-col gap-3">
+              {investigationResult.players.map((p: any, i: number) => (
+                <div key={i} className={`rounded-lg border p-4 ${p.isCaptain ? "border-court-orange/40 bg-court-orange/5" : "border-[#1f2733] bg-[#0b0f14]"}`}>
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold">{p.player_name}</p>
+                      {p.isCaptain && <span className="text-xs bg-court-orange/20 text-court-orange px-2 py-0.5 rounded-full">⭐ Captain ×2</span>}
+                      {p.isDNP    && <span className="text-xs bg-gray-700/50 text-gray-400 px-2 py-0.5 rounded-full">DNP</span>}
+                    </div>
+                    <span className="text-lg font-bold text-court-orange">{p.finalFP.toFixed(1)} FP</span>
+                  </div>
+
+                  {/* Stats grid */}
+                  <div className="grid grid-cols-6 gap-2 text-xs mb-3">
+                    {[["PTS", p.agg.points], ["REB", p.agg.rebounds], ["AST", p.agg.assists],
+                      ["STL", p.agg.steals], ["BLK", p.agg.blocks], ["TO", p.agg.turnovers]].map(([label, val]: any) => (
+                      <div key={label} className="bg-[#1f2733] rounded p-2 text-center">
+                        <p className="text-gray-500">{label}</p>
+                        <p className="font-bold">{val}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Pipeline trace */}
+                  <div className="text-xs text-gray-400 flex flex-wrap gap-x-4 gap-y-1 font-mono">
+                    <span>Base FP: <strong className="text-gray-200">{p.baseFP.toFixed(2)}</strong></span>
+                    <span>×{p.captainMult}</span>
+                    <span>Final: <strong className="text-court-orange">{p.finalFP.toFixed(2)}</strong></span>
+                  </div>
+
+                  {/* Stale cache warnings */}
+                  {p.staleCacheIssues.length > 0 && (
+                    <div className="mt-3 rounded bg-yellow-900/20 border border-yellow-700/40 p-2 text-xs">
+                      <p className="text-yellow-400 font-semibold mb-1">⚠️ Stale Cache Detected ({p.staleCacheIssues.length} row{p.staleCacheIssues.length > 1 ? "s" : ""})</p>
+                      {p.staleCacheIssues.map((sc: any, j: number) => (
+                        <div key={j} className="text-yellow-200/70 font-mono">
+                          Stat {sc.stat_id.slice(0,8)}… stored=<span className="text-red-400">{sc.stored.toFixed(2)}</span> canonical=<span className="text-court-green">{sc.canonical.toFixed(2)}</span> diff=<span className={sc.canonical > sc.stored ? "text-court-green" : "text-red-400"}>{(sc.canonical - sc.stored).toFixed(2)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Out of scope stats warning */}
+                  {p.outOfScopeCount > 0 && (
+                    <div className="mt-2 rounded bg-red-900/20 border border-red-700/40 p-2 text-xs">
+                      <p className="text-red-400 font-semibold">⚠️ {p.outOfScopeCount} stat row(s) exist outside the week date window</p>
+                      <p className="text-red-300/70 text-[10px] mt-0.5">These were excluded from calculation but may have been included in a previous run.</p>
+                    </div>
+                  )}
+
+                  {/* Debug IDs */}
+                  <details className="mt-3 group">
+                    <summary className="cursor-pointer text-[10px] text-gray-600 hover:text-gray-400 w-fit">▶ Debug IDs</summary>
+                    <div className="mt-1 font-mono text-[10px] text-gray-600 flex flex-col gap-0.5">
+                      <span>Player ID: {p.pid}</span>
+                      {p.validStats.map((s: any, k: number) => (
+                        <span key={k}>Stat {k+1}: {s.stat_id} | Game: {s.game_id}</span>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              ))}
+            </div>
+
+            {/* Summary */}
+            <div className="bg-[#0b0f14] rounded-lg p-4 text-xs grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div><p className="text-gray-500">Calculated</p><p className="font-bold text-lg text-court-orange">{investigationResult.calculatedTotal.toFixed(2)}</p></div>
+              <div><p className="text-gray-500">Leaderboard</p><p className="font-bold text-lg">{investigationResult.lbScore !== null ? investigationResult.lbScore.toFixed(2) : "—"}</p></div>
+              <div><p className="text-gray-500">Difference</p><p className={`font-bold text-lg ${Math.abs(investigationResult.diff ?? 0) > 0.01 ? "text-red-400" : "text-court-green"}`}>{investigationResult.diff !== null ? (investigationResult.diff >= 0 ? "+" : "") + investigationResult.diff.toFixed(2) : "—"}</p></div>
+              <div><p className="text-gray-500">Stale Rows</p><p className={`font-bold text-lg ${investigationResult.totalStaleIssues > 0 ? "text-yellow-400" : "text-court-green"}`}>{investigationResult.totalStaleIssues}</p></div>
+            </div>
+
+            {/* Root cause */}
+            {investigationResult.rootCauses.length > 0 && (
+              <div className="rounded-lg border border-[#2a3441] p-4 flex flex-col gap-2">
+                <p className="text-xs font-semibold text-gray-300">🧠 Root Cause Analysis</p>
+                {investigationResult.rootCauses.map((cause: string, i: number) => (
+                  <div key={i} className={`text-xs px-3 py-2 rounded ${investigationResult.verified ? "bg-court-green/10 text-court-green" : "bg-yellow-900/20 text-yellow-300"}`}>
+                    {i+1}. {cause}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Integrity issues */}
+            {investigationResult.integrityIssues.length > 0 && (
+              <div className="rounded-lg border border-red-700/40 bg-red-900/10 p-4">
+                <p className="text-xs font-semibold text-red-400 mb-2">⚠️ Lineup Integrity Issues</p>
+                {investigationResult.integrityIssues.map((issue: string, i: number) => (
+                  <p key={i} className="text-xs text-red-300">• {issue}</p>
+                ))}
+              </div>
+            )}
+
+            {/* Debug meta */}
+            <details className="group">
+              <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 w-fit">
+                <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                Full debug metadata
+              </summary>
+              <div className="mt-2 bg-[#0b0f14] rounded-lg p-3 text-[10px] text-gray-600 font-mono flex flex-col gap-0.5">
+                <span>Lineup ID   : {investigationResult.lineup_id}</span>
+                <span>Captain ID  : {investigationResult.captain_player_id}</span>
+                <span>Week ID     : {investigationResult.week_id}</span>
+                <span>User ID     : {investigationResult.user_id}</span>
+                <span>Generated   : {new Date(investigationResult.generatedAt).toLocaleString()}</span>
+              </div>
+            </details>
+
+            <button onClick={downloadInvestigationReport} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold w-fit">
+              ⬇️ Download Investigation Report
+            </button>
+          </div>
+        )}
+        {investigationResult?.error && <p className="text-sm text-red-400 mt-3">❌ {investigationResult.error}</p>}
       </div>
 
       {/* ADMIN-006: Gameweek Participation */}
