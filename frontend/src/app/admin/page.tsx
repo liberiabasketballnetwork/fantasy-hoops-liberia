@@ -49,6 +49,15 @@ export default function AdminPage() {
   const [recoveryConfirm, setRecoveryConfirm] = useState<"rollback" | "reset" | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(false);
 
+  // ADMIN-009: Score Verification Console
+  const [verifyWeekId,    setVerifyWeekId]    = useState("");
+  const [verifyUserId,    setVerifyUserId]    = useState("");
+  const [verifyResult,    setVerifyResult]    = useState<any>(null);
+  const [verifyLoading,   setVerifyLoading]   = useState(false);
+  const [verifyAdvanced,  setVerifyAdvanced]  = useState(false);
+  const [auditResult,     setAuditResult]     = useState<any>(null);
+  const [auditLoading,    setAuditLoading]    = useState(false);
+
   // UX-001: Users refresh state
   const [usersRefreshing, setUsersRefreshing] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -291,6 +300,237 @@ export default function AdminPage() {
     } finally {
       setRecoveryLoading(false);
     }
+  }
+
+  // ── ADMIN-009: Score Verification ─────────────────────────────────────────
+
+  const SCORING = { POINTS:1, REBOUNDS:1.5, ASSISTS:2, STEALS:3, BLOCKS:3, TURNOVERS:-1, CAPTAIN:2 };
+
+  function calcFP(s: any): number {
+    return (
+      Number(s.points    || 0) * SCORING.POINTS    +
+      Number(s.rebounds  || 0) * SCORING.REBOUNDS  +
+      Number(s.assists   || 0) * SCORING.ASSISTS   +
+      Number(s.steals    || 0) * SCORING.STEALS    +
+      Number(s.blocks    || 0) * SCORING.BLOCKS    +
+      Number(s.turnovers || 0) * SCORING.TURNOVERS
+    );
+  }
+
+  async function runVerification() {
+    if (!verifyWeekId || !verifyUserId) return;
+    setVerifyLoading(true);
+    setVerifyResult(null);
+    try {
+      const [lineupsRes, lpRes, statsRes, lbRes, gamesRes, weekRes] = await Promise.all([
+        api.get("/admin/data/user-lineups"),
+        api.get("/admin/data/lineup-players"),
+        api.get("/admin/data/player-stats"),
+        api.get("/admin/data/leaderboard"),
+        api.get("/admin/data/games"),
+        api.get("/admin/data/weekly-gameweek"),
+      ]);
+
+      const lineup = (lineupsRes.data.rows || []).find(
+        (l: any) => l.user_id === verifyUserId && l.week_id === verifyWeekId
+      );
+      if (!lineup) { setVerifyResult({ error: "No lineup found for this user/week." }); return; }
+
+      const week = (weekRes.data.rows || []).find((w: any) => w.week_id === verifyWeekId);
+      const startDate = week ? new Date(week.start_date) : null;
+      const endDate   = week ? new Date(week.end_date)   : null;
+      if (endDate) endDate.setHours(23, 59, 59, 999);
+
+      const validGameIds = new Set(
+        (gamesRes.data.rows || [])
+          .filter((g: any) => {
+            if (String(g.status).toLowerCase() !== "completed") return false;
+            if (!startDate || !endDate) return true;
+            const d = new Date(g.game_date);
+            return d >= startDate && d <= endDate;
+          })
+          .map((g: any) => g.game_id)
+      );
+
+      const lineupPlayerIds = (lpRes.data.rows || [])
+        .filter((lp: any) => lp.lineup_id === lineup.lineup_id)
+        .map((lp: any) => lp.player_id);
+
+      const allStats: any[] = statsRes.data.rows || [];
+
+      // Aggregate stats per player across valid games only
+      const statsByPlayer: Record<string, any> = {};
+      for (const stat of allStats) {
+        if (!lineupPlayerIds.includes(stat.player_id)) continue;
+        if (!validGameIds.has(stat.game_id)) continue;
+        if (!statsByPlayer[stat.player_id]) {
+          statsByPlayer[stat.player_id] = { points:0, rebounds:0, assists:0, steals:0, blocks:0, turnovers:0, game_ids:[], stat_ids:[] };
+        }
+        const p = statsByPlayer[stat.player_id];
+        p.points    += Number(stat.points    || 0);
+        p.rebounds  += Number(stat.rebounds  || 0);
+        p.assists   += Number(stat.assists   || 0);
+        p.steals    += Number(stat.steals    || 0);
+        p.blocks    += Number(stat.blocks    || 0);
+        p.turnovers += Number(stat.turnovers || 0);
+        p.game_ids.push(stat.game_id);
+        p.stat_ids.push(stat.stat_id);
+      }
+
+      const users = await api.get("/admin/users");
+      const userRow = (users.data.users || []).find((u: any) => u.user_id === verifyUserId);
+
+      const players = await api.get("/players");
+      const playerMap = new Map((players.data.players || []).map((p: any) => [p.player_id, p]));
+
+      let subtotal = 0;
+      let captainBonus = 0;
+      const rows = lineupPlayerIds.map((pid: string) => {
+        const s = statsByPlayer[pid] || { points:0, rebounds:0, assists:0, steals:0, blocks:0, turnovers:0, game_ids:[], stat_ids:[] };
+        const baseFP = calcFP(s);
+        const isCaptain = pid === lineup.captain_player_id;
+        const fp = isCaptain ? baseFP * SCORING.CAPTAIN : baseFP;
+        if (isCaptain) captainBonus = baseFP; // bonus = extra points from doubling
+        subtotal += fp;
+        return { pid, player: (playerMap.get(pid) as any)?.full_name || pid, ...s, baseFP, fp, isCaptain };
+      });
+
+      const lbEntry = (lbRes.data.rows || []).find(
+        (r: any) => r.user_id === verifyUserId && r.week_id === verifyWeekId
+      );
+      const lbScore = lbEntry ? Number(lbEntry.score) : null;
+      const diff = lbScore !== null ? Math.round((subtotal - lbScore) * 100) / 100 : null;
+
+      setVerifyResult({
+        userName: userRow?.display_name || userRow?.full_name || verifyUserId,
+        lineup_id: lineup.lineup_id,
+        captain_player_id: lineup.captain_player_id,
+        week_id: verifyWeekId,
+        rows,
+        subtotal: Math.round(subtotal * 100) / 100,
+        captainBonus: Math.round(captainBonus * 100) / 100,
+        lbScore,
+        diff,
+        verified: diff !== null && Math.abs(diff) < 0.01,
+      });
+    } catch (err: any) {
+      setVerifyResult({ error: err?.response?.data?.error || err?.message || "Verification failed." });
+    } finally {
+      setVerifyLoading(false);
+    }
+  }
+
+  async function runWeekAudit() {
+    if (!verifyWeekId) return;
+    setAuditLoading(true);
+    setAuditResult(null);
+    try {
+      const [lineupsRes, lpRes, statsRes, lbRes, gamesRes, weekRes, usersRes, playersRes] = await Promise.all([
+        api.get("/admin/data/user-lineups"),
+        api.get("/admin/data/lineup-players"),
+        api.get("/admin/data/player-stats"),
+        api.get("/admin/data/leaderboard"),
+        api.get("/admin/data/games"),
+        api.get("/admin/data/weekly-gameweek"),
+        api.get("/admin/users"),
+        api.get("/players"),
+      ]);
+
+      const week = (weekRes.data.rows || []).find((w: any) => w.week_id === verifyWeekId);
+      const startDate = week ? new Date(week.start_date) : null;
+      const endDate   = week ? new Date(week.end_date)   : null;
+      if (endDate) endDate.setHours(23, 59, 59, 999);
+
+      const validGameIds = new Set(
+        (gamesRes.data.rows || [])
+          .filter((g: any) => {
+            if (String(g.status).toLowerCase() !== "completed") return false;
+            if (!startDate || !endDate) return true;
+            const d = new Date(g.game_date);
+            return d >= startDate && d <= endDate;
+          })
+          .map((g: any) => g.game_id)
+      );
+
+      const weekLineups = (lineupsRes.data.rows || []).filter((l: any) => l.week_id === verifyWeekId);
+      const allLP: any[]    = lpRes.data.rows    || [];
+      const allStats: any[] = statsRes.data.rows || [];
+      const allLB: any[]    = lbRes.data.rows    || [];
+      const userMap = new Map((usersRes.data.users || []).map((u: any) => [u.user_id, u]));
+
+      // Build stat map per player across valid games
+      const statsByPlayer: Record<string, any> = {};
+      for (const stat of allStats) {
+        if (!validGameIds.has(stat.game_id)) continue;
+        if (!statsByPlayer[stat.player_id]) statsByPlayer[stat.player_id] = { points:0, rebounds:0, assists:0, steals:0, blocks:0, turnovers:0 };
+        const p = statsByPlayer[stat.player_id];
+        p.points    += Number(stat.points    || 0);
+        p.rebounds  += Number(stat.rebounds  || 0);
+        p.assists   += Number(stat.assists   || 0);
+        p.steals    += Number(stat.steals    || 0);
+        p.blocks    += Number(stat.blocks    || 0);
+        p.turnovers += Number(stat.turnovers || 0);
+      }
+
+      const auditRows = weekLineups.map((lineup: any) => {
+        const pids = allLP.filter((lp: any) => lp.lineup_id === lineup.lineup_id).map((lp: any) => lp.player_id);
+        let total = 0;
+        for (const pid of pids) {
+          const s = statsByPlayer[pid] || {};
+          let fp = calcFP(s);
+          if (pid === lineup.captain_player_id) fp *= SCORING.CAPTAIN;
+          total += fp;
+        }
+        const calculated = Math.round(total * 100) / 100;
+        const lbEntry = allLB.find((r: any) => r.user_id === lineup.user_id && r.week_id === verifyWeekId);
+        const lbScore = lbEntry ? Number(lbEntry.score) : null;
+        const diff = lbScore !== null ? Math.round((calculated - lbScore) * 100) / 100 : null;
+        const user = userMap.get(lineup.user_id) as any;
+        return { user_id: lineup.user_id, userName: user?.display_name || user?.full_name || lineup.user_id, calculated, lbScore, diff, verified: diff !== null && Math.abs(diff) < 0.01 };
+      });
+
+      const passed  = auditRows.filter((r: any) => r.verified).length;
+      const failed  = auditRows.filter((r: any) => !r.verified).length;
+      const maxDiff = auditRows.reduce((max: number, r: any) => Math.max(max, Math.abs(r.diff ?? 0)), 0);
+
+      setAuditResult({ rows: auditRows, total: auditRows.length, passed, failed, maxDiff: Math.round(maxDiff * 100) / 100 });
+    } catch (err: any) {
+      setAuditResult({ error: err?.message || "Audit failed." });
+    } finally {
+      setAuditLoading(false);
+    }
+  }
+
+  function downloadVerificationReport() {
+    if (!verifyResult || verifyResult.error) return;
+    const v = verifyResult;
+    const lines = [
+      "FANTASY HOOPS LIBERIA — SCORE VERIFICATION REPORT",
+      `Date: ${new Date().toLocaleString()}`,
+      `User: ${v.userName}`,
+      `Week ID: ${v.week_id}`,
+      `Lineup ID: ${v.lineup_id}`,
+      "",
+      "PLAYER BREAKDOWN",
+      "Player                        PTS  REB  AST  STL  BLK  TO   Base FP   Final FP  Captain",
+      ...v.rows.map((r: any) =>
+        `${r.player.padEnd(30)} ${String(r.points).padEnd(4)} ${String(r.rebounds).padEnd(4)} ${String(r.assists).padEnd(4)} ${String(r.steals).padEnd(4)} ${String(r.blocks).padEnd(4)} ${String(r.turnovers).padEnd(4)} ${r.baseFP.toFixed(1).padEnd(9)} ${r.fp.toFixed(1).padEnd(9)} ${r.isCaptain ? "⭐ Captain" : ""}`
+      ),
+      "",
+      "SUMMARY",
+      `Calculated Total : ${v.subtotal.toFixed(2)}`,
+      `Captain Bonus    : +${v.captainBonus.toFixed(2)}`,
+      `Leaderboard Score: ${v.lbScore !== null ? v.lbScore.toFixed(2) : "N/A"}`,
+      `Difference       : ${v.diff !== null ? v.diff.toFixed(2) : "N/A"}`,
+      `Result           : ${v.verified ? "✅ VERIFIED" : "❌ MISMATCH"}`,
+    ];
+    const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
+    a.href     = url;
+    a.download = `fhl-verification-${v.userName}-${v.week_id.slice(0,8)}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   if (loading || !user) return null;
@@ -586,6 +826,183 @@ export default function AdminPage() {
         onConfirm={() => runRecoveryAction("reset")}
         onCancel={() => setRecoveryConfirm(null)}
       />
+
+      {/* ADMIN-009: Score Verification Console */}
+      <div className="card p-5">
+        <h2 className="font-bold mb-1">🔍 Score Verification</h2>
+        <p className="text-xs text-gray-500 mb-4">Independently recalculates any lineup score from raw stats. Read-only — no data is modified.</p>
+
+        {/* Inputs */}
+        <div className="flex flex-wrap gap-3 mb-4">
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+            <label className="text-xs text-gray-500">Week ID</label>
+            <select className="input-field" value={verifyWeekId} onChange={(e) => { setVerifyWeekId(e.target.value); setVerifyResult(null); setAuditResult(null); }}>
+              <option value="">Select week…</option>
+              {weeks.map((w: any) => (
+                <option key={w.week_id} value={w.week_id}>{w.start_date} → {w.end_date}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1 flex-1 min-w-[200px]">
+            <label className="text-xs text-gray-500">Manager</label>
+            <select className="input-field" value={verifyUserId} onChange={(e) => { setVerifyUserId(e.target.value); setVerifyResult(null); }}>
+              <option value="">Select manager…</option>
+              {users.map((u: any) => (
+                <option key={u.user_id} value={u.user_id}>{u.display_name || u.full_name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap gap-2 mb-5">
+          <button onClick={runVerification} disabled={!verifyWeekId || !verifyUserId || verifyLoading} className="btn-primary text-sm disabled:opacity-50">
+            {verifyLoading ? "Verifying…" : "Verify Score"}
+          </button>
+          <button onClick={runWeekAudit} disabled={!verifyWeekId || auditLoading} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold disabled:opacity-50">
+            {auditLoading ? "Auditing…" : "🔎 Verify Entire Week"}
+          </button>
+        </div>
+
+        {/* Single user result */}
+        {verifyResult && !verifyResult.error && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm font-semibold">{verifyResult.userName}</p>
+              <span className={`text-sm font-bold px-3 py-1 rounded-full ${verifyResult.verified ? "bg-court-green/15 text-court-green" : "bg-red-500/15 text-red-400"}`}>
+                {verifyResult.verified ? "✅ VERIFIED" : `❌ MISMATCH ${verifyResult.diff > 0 ? "+" : ""}${verifyResult.diff?.toFixed(2)}`}
+              </span>
+            </div>
+
+            {/* Player breakdown table */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 border-b border-[#1f2733]">
+                    <th className="text-left py-2 pr-3">Player</th>
+                    <th className="text-right py-2 px-2">PTS</th>
+                    <th className="text-right py-2 px-2">REB</th>
+                    <th className="text-right py-2 px-2">AST</th>
+                    <th className="text-right py-2 px-2">STL</th>
+                    <th className="text-right py-2 px-2">BLK</th>
+                    <th className="text-right py-2 px-2">TO</th>
+                    <th className="text-right py-2 px-2">Base FP</th>
+                    <th className="text-right py-2 pl-2">Final FP</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {verifyResult.rows.map((r: any, i: number) => (
+                    <tr key={i} className={`border-b border-[#1f2733] ${r.isCaptain ? "bg-court-orange/5" : ""}`}>
+                      <td className="py-2 pr-3 font-medium">
+                        {r.player}
+                        {r.isCaptain && <span className="ml-1 text-court-orange">⭐</span>}
+                        {r.baseFP === 0 && <span className="ml-1 text-gray-600 text-[10px]">DNP</span>}
+                      </td>
+                      <td className="text-right py-2 px-2">{r.points}</td>
+                      <td className="text-right py-2 px-2">{r.rebounds}</td>
+                      <td className="text-right py-2 px-2">{r.assists}</td>
+                      <td className="text-right py-2 px-2">{r.steals}</td>
+                      <td className="text-right py-2 px-2">{r.blocks}</td>
+                      <td className="text-right py-2 px-2">{r.turnovers}</td>
+                      <td className="text-right py-2 px-2 text-gray-400">{r.baseFP.toFixed(1)}</td>
+                      <td className="text-right py-2 pl-2 font-bold text-court-orange">{r.fp.toFixed(1)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Summary */}
+            <div className="bg-[#0b0f14] rounded-lg p-4 grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div><p className="text-gray-500">Calculated Total</p><p className="font-bold text-lg text-court-orange">{verifyResult.subtotal.toFixed(2)}</p></div>
+              <div><p className="text-gray-500">Captain Bonus</p><p className="font-bold text-lg">+{verifyResult.captainBonus.toFixed(2)}</p></div>
+              <div><p className="text-gray-500">Leaderboard Score</p><p className="font-bold text-lg">{verifyResult.lbScore !== null ? verifyResult.lbScore.toFixed(2) : "—"}</p></div>
+              <div><p className="text-gray-500">Difference</p><p className={`font-bold text-lg ${Math.abs(verifyResult.diff ?? 0) > 0.01 ? "text-red-400" : "text-court-green"}`}>{verifyResult.diff !== null ? (verifyResult.diff >= 0 ? "+" : "") + verifyResult.diff.toFixed(2) : "—"}</p></div>
+            </div>
+
+            {/* Advanced section */}
+            <details className="group">
+              <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 w-fit">
+                <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                Advanced / Debug Info
+              </summary>
+              <div className="mt-2 bg-[#0b0f14] rounded-lg p-3 text-xs text-gray-400 flex flex-col gap-1 font-mono">
+                <p>Week ID: {verifyResult.week_id}</p>
+                <p>Lineup ID: {verifyResult.lineup_id}</p>
+                <p>Captain Player ID: {verifyResult.captain_player_id}</p>
+                {verifyResult.rows.map((r: any, i: number) => (
+                  <div key={i} className="mt-1">
+                    <p className="text-gray-300">{r.player}</p>
+                    <p>Player ID: {r.pid}</p>
+                    <p>Games: {r.game_ids?.join(", ") || "none"}</p>
+                    <p>Stat IDs: {r.stat_ids?.join(", ") || "none"}</p>
+                  </div>
+                ))}
+              </div>
+            </details>
+
+            <button onClick={downloadVerificationReport} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold w-fit">
+              ⬇️ Download Verification Report
+            </button>
+          </div>
+        )}
+
+        {verifyResult?.error && (
+          <p className="text-sm text-red-400">❌ {verifyResult.error}</p>
+        )}
+
+        {/* Week audit result */}
+        {auditResult && !auditResult.error && (
+          <div className="flex flex-col gap-4 mt-4 border-t border-[#1f2733] pt-4">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <p className="text-sm font-semibold">Week Audit Results</p>
+              {auditResult.failed > 0
+                ? <span className="text-sm font-bold px-3 py-1 rounded-full bg-yellow-500/15 text-yellow-400">⚠️ Investigation Required</span>
+                : <span className="text-sm font-bold px-3 py-1 rounded-full bg-court-green/15 text-court-green">✅ All Verified</span>
+              }
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              {[
+                { label: "Checked", value: auditResult.total },
+                { label: "Passed",  value: auditResult.passed,  cls: "text-court-green" },
+                { label: "Failed",  value: auditResult.failed,  cls: auditResult.failed > 0 ? "text-red-400" : "" },
+                { label: "Max Diff",value: auditResult.maxDiff.toFixed(2), cls: auditResult.maxDiff > 0.01 ? "text-yellow-400" : "" },
+              ].map(({ label, value, cls }: any) => (
+                <div key={label} className="bg-[#0b0f14] rounded-lg p-3">
+                  <p className="text-gray-500">{label}</p>
+                  <p className={`font-bold text-lg ${cls || "text-gray-200"}`}>{value}</p>
+                </div>
+              ))}
+            </div>
+            <div className="overflow-x-auto max-h-64">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 border-b border-[#1f2733]">
+                    <th className="text-left py-2 pr-3">Manager</th>
+                    <th className="text-right py-2 px-2">Calculated</th>
+                    <th className="text-right py-2 px-2">Leaderboard</th>
+                    <th className="text-right py-2 px-2">Diff</th>
+                    <th className="text-right py-2 pl-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditResult.rows.map((r: any, i: number) => (
+                    <tr key={i} className="border-b border-[#1f2733]">
+                      <td className="py-2 pr-3">{r.userName}</td>
+                      <td className="text-right py-2 px-2">{r.calculated.toFixed(2)}</td>
+                      <td className="text-right py-2 px-2">{r.lbScore !== null ? r.lbScore.toFixed(2) : "—"}</td>
+                      <td className={`text-right py-2 px-2 ${Math.abs(r.diff ?? 0) > 0.01 ? "text-red-400" : "text-court-green"}`}>
+                        {r.diff !== null ? (r.diff >= 0 ? "+" : "") + r.diff.toFixed(2) : "—"}
+                      </td>
+                      <td className="text-right py-2 pl-2">{r.verified ? "✅" : "❌"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+        {auditResult?.error && <p className="text-sm text-red-400 mt-3">❌ {auditResult.error}</p>}
+      </div>
 
       {/* ADMIN-006: Gameweek Participation */}
       {selectionStats && (

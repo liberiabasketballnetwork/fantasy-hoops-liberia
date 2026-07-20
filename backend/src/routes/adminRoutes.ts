@@ -217,6 +217,14 @@ router.get("/users", async (_req, res) => {
   } catch (err) { res.status(500).json({ error: "Failed to fetch users" }); }
 });
 
+// ADMIN-009: Raw data endpoints for Score Verification Console
+router.get("/data/user-lineups",     async (_req, res) => { try { res.json({ rows: await getSheetData("User_Lineups") });     } catch { res.status(500).json({ error: "Failed" }); } });
+router.get("/data/lineup-players",   async (_req, res) => { try { res.json({ rows: await getSheetData("Lineup_Players") });   } catch { res.status(500).json({ error: "Failed" }); } });
+router.get("/data/player-stats",     async (_req, res) => { try { res.json({ rows: await getSheetData("Player_Stats") });     } catch { res.status(500).json({ error: "Failed" }); } });
+router.get("/data/leaderboard",      async (_req, res) => { try { res.json({ rows: await getSheetData("Leaderboard") });      } catch { res.status(500).json({ error: "Failed" }); } });
+router.get("/data/games",            async (_req, res) => { try { res.json({ rows: await getSheetData("Games") });            } catch { res.status(500).json({ error: "Failed" }); } });
+router.get("/data/weekly-gameweek",  async (_req, res) => { try { res.json({ rows: await getSheetData("Weekly_Gameweek") }); } catch { res.status(500).json({ error: "Failed" }); } });
+
 router.delete("/users/:id", async (req, res) => {
   try {
     const ok = await deleteRow("Users", "user_id", req.params.id);
