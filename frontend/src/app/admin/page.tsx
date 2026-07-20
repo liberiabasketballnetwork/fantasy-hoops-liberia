@@ -42,8 +42,12 @@ export default function AdminPage() {
   // FHDS: Price update
   const [updatingPrices, setUpdatingPrices] = useState(false);
 
-  // Emergency Tools panel
+  // Emergency Tools panel (legacy, inside weekly ops card)
   const [emergencyOpen, setEmergencyOpen] = useState(false);
+
+  // ADMIN-008: Emergency Recovery panel — permanent, state-independent
+  const [recoveryConfirm, setRecoveryConfirm] = useState<"rollback" | "reset" | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
 
   // UX-001: Users refresh state
   const [usersRefreshing, setUsersRefreshing] = useState(false);
@@ -263,6 +267,32 @@ export default function AdminPage() {
     }
   }
 
+  // ADMIN-008: Emergency Recovery handlers
+  async function runRecoveryAction(action: "rollback" | "reset") {
+    const currentWeekId = weeks[0]?.week_id;
+    if (!currentWeekId) {
+      setMessage("❌ No active gameweek found.");
+      setRecoveryConfirm(null);
+      return;
+    }
+    setRecoveryLoading(true);
+    setRecoveryConfirm(null);
+    try {
+      if (action === "rollback") {
+        const res = await api.post("/admin/calculation-backup/rollback", { week_id: currentWeekId });
+        setMessage(`✅ Rollback completed. Restored ${res.data.restored_leaderboard_count ?? 0} leaderboard row(s) and ${res.data.restored_player_prices_count ?? 0} player price(s).`);
+      } else {
+        await api.post("/admin/reset-week", { week_id: currentWeekId });
+        setMessage("✅ Week reset successfully. Leaderboard and fantasy scoring cleared. User teams preserved.");
+      }
+      await loadAll();
+    } catch (err: any) {
+      setMessage(err?.response?.data?.error || `❌ ${action === "rollback" ? "Rollback" : "Reset"} failed.`);
+    } finally {
+      setRecoveryLoading(false);
+    }
+  }
+
   if (loading || !user) return null;
 
   return (
@@ -271,6 +301,7 @@ export default function AdminPage() {
       <LoadingOverlay visible={calculatingWeeklyScores} title="Calculating Weekly Scores..." message="Processing player statistics and updating the leaderboard." />
       <LoadingOverlay visible={updatingPrices} title="Updating Player Prices..." message="Adjusting fantasy prices based on this week's performance." />
       <LoadingOverlay visible={rollingBack} title="Rolling Back..." message="Restoring leaderboard, player prices, and price history." />
+      <LoadingOverlay visible={recoveryLoading} title="Running Recovery..." message="Please wait — do not close this page." />
 
       {/* FHDS Result modal */}
       <AppModal open={modal.open} type={modal.type} title={modal.title} message={modal.message} details={modal.details} confirmText="OK" onConfirm={closeModal} />
@@ -476,6 +507,85 @@ export default function AdminPage() {
           );
         })}
       </div>
+
+      {/* ADMIN-008: Emergency Recovery — always visible, state-independent */}
+      <div className="card p-5 border border-red-900/40">
+        <div className="flex items-start justify-between gap-4 mb-3">
+          <div>
+            <h2 className="font-bold text-red-400">⚠️ Emergency Recovery</h2>
+            <p className="text-xs text-gray-500 mt-0.5">
+              Administrative recovery tools for exceptional situations. Requires confirmation before execution.
+            </p>
+          </div>
+        </div>
+
+        {weeks.length === 0 && (
+          <p className="text-xs text-gray-500">No active gameweek — recovery tools will become available once a gameweek exists.</p>
+        )}
+
+        {weeks.length > 0 && (
+          <div className="flex flex-col gap-4">
+            {/* Rollback */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-200">↩️ Rollback Last Calculation</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Restore the gameweek to its pre-calculation state — scores, prices, and leaderboard.
+                  Use this before recalculating with the corrected scoring engine.
+                </p>
+              </div>
+              <button
+                onClick={() => setRecoveryConfirm("rollback")}
+                disabled={recoveryLoading}
+                className="px-3 py-2 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60 disabled:opacity-50 flex-shrink-0"
+              >
+                ↩️ Rollback
+              </button>
+            </div>
+
+            <div className="border-t border-[#1f2733]" />
+
+            {/* Reset Week */}
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-gray-200">🔁 Reset Week</p>
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Clear leaderboard and fantasy scoring for this week.
+                  User teams are <strong className="text-gray-300">not</strong> deleted.
+                  Use when Rollback has no backup available.
+                </p>
+              </div>
+              <button
+                onClick={() => setRecoveryConfirm("reset")}
+                disabled={recoveryLoading}
+                className="px-3 py-2 rounded bg-red-900/40 border border-red-700/50 text-red-400 text-xs font-semibold hover:bg-red-900/60 disabled:opacity-50 flex-shrink-0"
+              >
+                🔁 Reset
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ADMIN-008: Confirmation dialogs */}
+      <ConfirmDialog
+        open={recoveryConfirm === "rollback"}
+        title="Rollback Last Calculation"
+        message="This will restore the gameweek to its pre-calculation state. Scores, player prices, and leaderboard will be reverted. Continue?"
+        confirmText="Yes, Rollback"
+        cancelText="Cancel"
+        onConfirm={() => runRecoveryAction("rollback")}
+        onCancel={() => setRecoveryConfirm(null)}
+      />
+      <ConfirmDialog
+        open={recoveryConfirm === "reset"}
+        title="Reset Week"
+        message="This will clear the leaderboard and fantasy scoring for this week. User teams will NOT be deleted. Continue?"
+        confirmText="Yes, Reset Week"
+        cancelText="Cancel"
+        onConfirm={() => runRecoveryAction("reset")}
+        onCancel={() => setRecoveryConfirm(null)}
+      />
 
       {/* ADMIN-006: Gameweek Participation */}
       {selectionStats && (
