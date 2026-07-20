@@ -6,15 +6,30 @@ import {
   sortLeaderboard,
 } from "./sheetsService";
 
+// ─── Canonical scoring multipliers ────────────────────────────────────────────
+// This is the SINGLE SOURCE OF TRUTH for all fantasy point calculations.
+// No other file may hardcode these values.
+
+export const SCORING_RULES = {
+  POINTS:    1,
+  REBOUNDS:  1.5,
+  ASSISTS:   2,
+  STEALS:    3,
+  BLOCKS:    3,
+  TURNOVERS: -1,
+  CAPTAIN_MULTIPLIER: 2,
+} as const;
+
 /**
- * Scoring rules (per the product spec):
- *  points    x 1
- *  rebounds  x 1.5
- *  assists   x 2
- *  steals    x 3
- *  blocks    x 3
- *  turnovers x -1
- *  captain   => total x 2
+ * Calculate fantasy points for a single player performance.
+ * This is the ONLY function in the entire codebase that computes fantasy points.
+ * All importers, score calculators, and admin tools must call this function.
+ *
+ * Formula:
+ *   FP = (PTS × 1) + (REB × 1.5) + (AST × 2) + (STL × 3) + (BLK × 3) − (TOV × 1)
+ *
+ * @example calculatePlayerFantasyScore({ points:19, rebounds:18, assists:2, steals:0, blocks:1, turnovers:0 })
+ * => 53.0   (19×1 + 18×1.5 + 2×2 + 0×3 + 1×3 − 0×1)
  */
 export function calculatePlayerFantasyScore(stat: {
   points: number;
@@ -24,14 +39,14 @@ export function calculatePlayerFantasyScore(stat: {
   blocks: number;
   turnovers: number;
 }): number {
-  const score =
-    Number(stat.points || 0) * 1 +
-    Number(stat.rebounds || 0) * 1.5 +
-    Number(stat.assists || 0) * 2 +
-    Number(stat.steals || 0) * 3 +
-    Number(stat.blocks || 0) * 3 -
-    Number(stat.turnovers || 0) * 1;
-  return score;
+  return (
+    Number(stat.points    || 0) * SCORING_RULES.POINTS    +
+    Number(stat.rebounds  || 0) * SCORING_RULES.REBOUNDS  +
+    Number(stat.assists   || 0) * SCORING_RULES.ASSISTS   +
+    Number(stat.steals    || 0) * SCORING_RULES.STEALS    +
+    Number(stat.blocks    || 0) * SCORING_RULES.BLOCKS    +
+    Number(stat.turnovers || 0) * SCORING_RULES.TURNOVERS
+  );
 }
 
 /**

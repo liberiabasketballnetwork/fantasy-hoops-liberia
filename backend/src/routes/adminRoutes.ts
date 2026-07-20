@@ -15,6 +15,7 @@ import {
   setSetting,
 } from "../services/sheetsService";
 import { logAdminAction } from "../services/adminActionLogger";
+import { calculatePlayerFantasyScore } from "../services/scoringEngine";
 
 const router = express.Router();
 router.use(authenticate, requireAdmin);
@@ -179,7 +180,9 @@ router.post("/input-stats", async (req, res) => {
   try {
     const { game_id, player_id, points, rebounds, assists, steals, blocks, turnovers, minutes_played } = req.body;
     if (!game_id || !player_id) return res.status(400).json({ error: "game_id and player_id are required" });
-    const stat = { stat_id: uuidv4(), game_id, player_id, points: points || 0, rebounds: rebounds || 0, assists: assists || 0, steals: steals || 0, blocks: blocks || 0, turnovers: turnovers || 0, minutes_played: minutes_played || 0, fantasy_points: 0 };
+    const rawStats = { points: points || 0, rebounds: rebounds || 0, assists: assists || 0, steals: steals || 0, blocks: blocks || 0, turnovers: turnovers || 0 };
+    const fantasy_points = calculatePlayerFantasyScore(rawStats);
+    const stat = { stat_id: uuidv4(), game_id, player_id, ...rawStats, minutes_played: minutes_played || 0, fantasy_points: fantasy_points.toFixed(2) };
     await appendRow("Player_Stats", stat);
     res.status(201).json({ stat });
   } catch (err) { res.status(500).json({ error: "Failed to add stat" }); }

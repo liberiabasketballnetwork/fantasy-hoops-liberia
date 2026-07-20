@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from "uuid";
 import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { getSheetData, updateRow, appendRow } from "../services/sheetsService";
 import { logAdminAction } from "../services/adminActionLogger";
+import { calculatePlayerFantasyScore } from "../services/scoringEngine";
 
 const router = express.Router();
 router.use(authenticate, requireAdmin);
@@ -106,15 +107,6 @@ function parseGameInfoFromFilename(filename: string, knownTeamNames: string[]) {
   const homeRaw = vsMatch[0].replace(/_/g, " ");
   const awayRaw = vsMatch[1].replace(/_/g, " ");
   return { home_team: resolveTeamNameFromRaw(homeRaw, knownTeamNames) || null, away_team: resolveTeamNameFromRaw(awayRaw, knownTeamNames) || null, game_date };
-}
-
-function calculateImportFantasyScore(stat: { points: number; rebounds: number; assists: number; steals: number; blocks: number; turnovers: number }): number {
-  const base = stat.points * 1 + stat.rebounds * 1.2 + stat.assists * 1.5 + stat.steals * 3 + stat.blocks * 3 - stat.turnovers * 1;
-  const categoriesInDoubleDigits = [stat.points, stat.rebounds, stat.assists, stat.steals, stat.blocks].filter((v) => v >= 10).length;
-  let bonus = 0;
-  if (categoriesInDoubleDigits >= 3) bonus = 5;
-  else if (categoriesInDoubleDigits >= 2) bonus = 3;
-  return base + bonus;
 }
 
 router.post("/import-stats-preview", upload.single("file"), async (req, res) => {
@@ -222,7 +214,7 @@ router.post("/import-stats-save", async (req: AuthRequest, res) => {
     if (alreadyImported) return res.status(409).json({ error: "This game has already been imported." });
 
     for (const row of rows) {
-      const fantasy_points = calculateImportFantasyScore(row);
+      const fantasy_points = calculatePlayerFantasyScore(row);
       await appendRow("Player_Stats", { stat_id: uuidv4(), game_id, player_id: row.player_id, points: row.points, rebounds: row.rebounds, assists: row.assists, steals: row.steals, blocks: row.blocks, turnovers: row.turnovers, minutes_played: row.minutes_played, fantasy_points: fantasy_points.toFixed(2) });
     }
 
