@@ -109,3 +109,5 @@ export async function calculateWeeklyScores(week_id: string, admin_id: string = 
   return { ranked, backup_id };
 }
 
+
+// ARCH-001 force redeploy Mon Jul 20 05:18:47 UTC 2026
