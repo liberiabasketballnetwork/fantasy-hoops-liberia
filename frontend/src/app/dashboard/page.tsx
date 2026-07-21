@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { FormBadge, PriceBadge } from "@/components/ui";
 import PWAInstallCard from "@/components/PWAInstallCard";
 import PushPermissionPrimer from "@/components/PushPermissionPrimer";
+import CommunityCard from "@/components/CommunityCard";
 
 interface AchievementWithBadge {
   achievement_id: string;
@@ -136,8 +137,11 @@ export default function DashboardPage() {
       {/* PWA Install Card */}
       <PWAInstallCard hasTeam={hasLineup} />
 
-      {/* Push Permission Primer — shown after first lineup submission */}
+      {/* Push Permission Primer */}
       <PushPermissionPrimer hasTeam={hasLineup} />
+
+      {/* Community Welcome Card — shown after first lineup submission */}
+      <CommunityCard hasTeam={hasLineup} />
 
       {/* ── Lineup status ───────────────────────────────────────────────── */}
       <div className="card p-5">

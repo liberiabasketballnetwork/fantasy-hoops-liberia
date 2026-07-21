@@ -29,6 +29,7 @@ import achievementRoutes from "./routes/achievementRoutes";
 import watchlistRoutes from "./routes/watchlistRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import pushRoutes from "./routes/pushRoutes";
+import communityRoutes from "./routes/communityRoutes";
 // Bootstrap push destination (registers with engine at import time)
 import "./services/pushDestinationHandler";
 
@@ -70,6 +71,7 @@ app.use("/", achievementRoutes);      // /achievements/* and /admin/achievements
 app.use("/", watchlistRoutes);        // /watchlist/*
 app.use("/", notificationRoutes);     // /notifications/*
 app.use("/", pushRoutes);             // /push/*
+app.use("/", communityRoutes);        // /community/*
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

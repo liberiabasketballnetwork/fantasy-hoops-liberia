@@ -1,10 +1,91 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { AppModal, ConfirmDialog, LoadingOverlay } from "@/components/ui";
+
+// ─── Community Settings Card ──────────────────────────────────────────────
+
+function CommunitySettingsCard() {
+  const [settings, setSettings] = React.useState({ enabled: false, whatsapp_url: "", reminder_days: "7", card_text: "" });
+  const [analytics, setAnalytics] = React.useState<any>(null);
+  const [saving, setSaving] = React.useState(false);
+  const [msg, setMsg] = React.useState("");
+
+  React.useEffect(() => {
+    api.get("/community/admin/settings").then((r: any) => setSettings(r.data)).catch(() => {});
+    api.get("/community/admin/analytics").then((r: any) => setAnalytics(r.data)).catch(() => {});
+  }, []);
+
+  async function save() {
+    setSaving(true); setMsg("");
+    try {
+      await api.post("/community/admin/settings", settings);
+      setMsg("✅ Saved.");
+    } catch { setMsg("❌ Save failed."); }
+    finally { setSaving(false); }
+  }
+
+  return (
+    <div className="card p-5">
+      <h2 className="font-bold mb-4">💬 Community Settings</h2>
+      <div className="flex flex-col gap-4">
+        {/* Enable toggle */}
+        <label className="flex items-center gap-3 cursor-pointer">
+          <div
+            onClick={() => setSettings(s => ({ ...s, enabled: !s.enabled }))}
+            className={`w-10 h-6 rounded-full transition-colors relative cursor-pointer ${settings.enabled ? "bg-court-green" : "bg-[#1f2733]"}`}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${settings.enabled ? "translate-x-5" : "translate-x-1"}`} />
+          </div>
+          <span className="text-sm">{settings.enabled ? "Community card enabled" : "Community card disabled"}</span>
+        </label>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">WhatsApp Invite Link</label>
+          <input className="input-field" placeholder="https://chat.whatsapp.com/..." value={settings.whatsapp_url} onChange={e => setSettings(s => ({ ...s, whatsapp_url: e.target.value }))} />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Reminder Interval (days)</label>
+          <input type="number" className="input-field w-24" min={1} max={30} value={settings.reminder_days} onChange={e => setSettings(s => ({ ...s, reminder_days: e.target.value }))} />
+        </div>
+
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Card Benefits Text (one per line, leave blank for defaults)</label>
+          <textarea className="input-field" rows={5} placeholder={"🏀 Weekly reminders\n📢 Player news\n🏆 Winner announcements"} value={settings.card_text} onChange={e => setSettings(s => ({ ...s, card_text: e.target.value }))} />
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button onClick={save} disabled={saving} className="btn-primary text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Settings"}</button>
+          {msg && <span className="text-xs">{msg}</span>}
+        </div>
+
+        {/* Analytics */}
+        {analytics && (
+          <div className="border-t border-[#1f2733] pt-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Community Analytics</p>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              {[
+                { label: "Card Shown",    value: analytics.shown },
+                { label: "Join Clicked",  value: analytics.join_clicked },
+                { label: "Dismissed",     value: analytics.dismissed },
+                { label: "Conversion",    value: analytics.conversion_rate },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-[#0b0f14] rounded-lg p-3">
+                  <p className="text-xs text-gray-500">{label}</p>
+                  <p className="text-lg font-bold text-court-orange">{value}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 export default function AdminPage() {
   const { user, loading } = useRequireAdmin();
@@ -1444,6 +1525,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* Community Settings — FEATURE-001 */}
+      <CommunitySettingsCard />
 
       {/* Teams */}
       <div className="card p-5">
