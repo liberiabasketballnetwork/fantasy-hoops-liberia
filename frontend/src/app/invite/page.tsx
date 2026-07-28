@@ -4,11 +4,12 @@ import { useState, useEffect } from "react";
 import { ToastContainer, useToast } from "@/components/ui";
 import { api } from "@/lib/api";
 
-// ─── Enhancement 1: Updated invite message ────────────────────────────────
+// ─── Invite URL ───────────────────────────────────────────────────────────
 
 const INVITE_URL = "https://fantasyhoops.online";
 
-const INVITE_MESSAGE = `🏀 Think you know Liberian basketball? Prove it!
+function buildMessage(headline: string) {
+  return `🏀 ${headline}
 
 Join me on Fantasy Hoops Liberia and build your dream team.
 
@@ -18,9 +19,9 @@ Join me on Fantasy Hoops Liberia and build your dream team.
 
 Play now:
 ${INVITE_URL}`;
+}
 
-const INVITE_MESSAGE_ENCODED = encodeURIComponent(INVITE_MESSAGE);
-const INVITE_URL_ENCODED     = encodeURIComponent(INVITE_URL);
+const INVITE_URL_ENCODED = encodeURIComponent(INVITE_URL);
 
 // ─── Share channels (unchanged from GEP-001) ──────────────────────────────
 
@@ -35,7 +36,7 @@ const CHANNELS = [
         <path d="M11.997 0C5.373 0 0 5.373 0 12c0 2.117.554 4.103 1.522 5.83L0 24l6.335-1.658C8.04 23.406 9.977 24 12 24c6.624 0 12-5.373 12-12S18.624 0 12 0h-.003zm.003 21.818c-1.818 0-3.504-.492-4.95-1.345l-.355-.211-3.683.964.982-3.589-.232-.369C2.533 15.723 2.182 13.9 2.182 12c0-5.414 4.401-9.818 9.818-9.818 5.414 0 9.818 4.404 9.818 9.818 0 5.417-4.404 9.818-9.818 9.818z"/>
       </svg>
     ),
-    getUrl: () => `https://wa.me/?text=${INVITE_MESSAGE_ENCODED}`,
+    getUrl: (msg: string) => `https://wa.me/?text=${encodeURIComponent(msg)}`,
   },
   {
     id:    "facebook",
@@ -46,7 +47,7 @@ const CHANNELS = [
         <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
       </svg>
     ),
-    getUrl: () => `https://www.facebook.com/sharer/sharer.php?u=${INVITE_URL_ENCODED}`,
+    getUrl: (_msg: string) => `https://www.facebook.com/sharer/sharer.php?u=${INVITE_URL_ENCODED}`,
   },
   {
     id:    "messenger",
@@ -57,14 +58,14 @@ const CHANNELS = [
         <path d="M12 0C5.373 0 0 4.975 0 11.111c0 3.497 1.745 6.616 4.472 8.652V24l4.086-2.242c1.09.301 2.246.464 3.442.464 6.627 0 12-4.974 12-11.111C24 4.975 18.627 0 12 0zm1.193 14.963l-3.056-3.259-5.963 3.259L10.986 8.4l3.13 3.259L20 8.4l-6.807 6.563z"/>
       </svg>
     ),
-    getUrl: () => `https://m.me/?link=${INVITE_URL_ENCODED}`,
+    getUrl: (_msg: string) => `https://m.me/?link=${INVITE_URL_ENCODED}`,
   },
   {
     id:    "sms",
     label: "SMS",
     color: "bg-[#1f2733] hover:bg-[#2a3441] text-gray-200 border border-[#2a3441]",
     icon:  <span className="text-xl leading-none" aria-hidden>💬</span>,
-    getUrl: () => `sms:?body=${INVITE_MESSAGE_ENCODED}`,
+    getUrl: (msg: string) => `sms:?body=${encodeURIComponent(msg)}`,
   },
 ] as const;
 
@@ -75,21 +76,33 @@ export default function InvitePage() {
   const [copied,  setCopied]  = useState(false);
   const [sharing, setSharing] = useState(false);
 
-  // Enhancement 3: Social proof — live manager count, static winners/prizes
-  const [managerCount, setManagerCount] = useState<number | null>(null);
+  // Platform Settings — headline, prizes, manager count
+  const [headline,       setHeadline]       = useState("Think you know Liberian basketball? Prove it!");
+  const [communityTitle, setCommunityTitle] = useState("Fantasy Hoops Community");
+  const [prizeTotal,     setPrizeTotal]     = useState<number | null>(null);
+  const [managerCount,   setManagerCount]   = useState<number | null>(null);
+
   useEffect(() => {
-    api.get("/admin/selection-stats")
-      .then((res) => {
-        const total = res.data?.total_managers ?? res.data?.users ?? null;
-        if (typeof total === "number") setManagerCount(total);
-      })
-      .catch(() => { /* non-fatal — show static fallback */ });
+    // Load platform settings
+    api.get("/platform-settings").then((res: any) => {
+      if (res.data.inviteHeadline)    setHeadline(res.data.inviteHeadline);
+      if (res.data.communityHeadline) setCommunityTitle(res.data.communityHeadline);
+      if (res.data.prizeMoneyAwarded) setPrizeTotal(Number(res.data.prizeMoneyAwarded));
+    }).catch(() => {});
+
+    // Live manager count
+    api.get("/admin/selection-stats").then((res: any) => {
+      const total = res.data?.total_managers ?? res.data?.users ?? null;
+      if (typeof total === "number") setManagerCount(total);
+    }).catch(() => {});
   }, []);
 
-  // ── Copy ────────────────────────────────────────────────────────────────
+  const inviteMessage = buildMessage(headline);
+
+  // ── Copy ───────────────────────────────────────────────────────────────
   async function handleCopy() {
     try {
-      await navigator.clipboard.writeText(INVITE_MESSAGE);
+      await navigator.clipboard.writeText(inviteMessage);
       setCopied(true);
       toast("success", "✓ Invite message copied! Share it anywhere.");
       setTimeout(() => setCopied(false), 3000);
@@ -100,12 +113,12 @@ export default function InvitePage() {
     }
   }
 
-  // ── Native share ────────────────────────────────────────────────────────
+  // ── Native share ───────────────────────────────────────────────────────
   async function handleNativeShare() {
     if (!navigator.share) return;
     setSharing(true);
     try {
-      await navigator.share({ title: "Fantasy Hoops Liberia", text: INVITE_MESSAGE, url: INVITE_URL });
+      await navigator.share({ title: "Fantasy Hoops Liberia", text: inviteMessage, url: INVITE_URL });
       toast("success", "🙌 Thanks for spreading the word!");
     } catch (err: any) {
       if (err?.name !== "AbortError") toast("error", "Share failed. Try another option below.");
@@ -114,9 +127,9 @@ export default function InvitePage() {
     }
   }
 
-  // ── Social channel ──────────────────────────────────────────────────────
+  // ── Social channel ─────────────────────────────────────────────────────
   function handleChannel(ch: typeof CHANNELS[number]) {
-    window.open(ch.getUrl(), "_blank", "noopener,noreferrer");
+    window.open(ch.getUrl(inviteMessage), "_blank", "noopener,noreferrer");
     toast("success", `🙌 Thanks for sharing via ${ch.label}!`);
   }
 
@@ -143,7 +156,7 @@ export default function InvitePage() {
           id="invite-text"
           readOnly
           rows={8}
-          value={INVITE_MESSAGE}
+          value={inviteMessage}
           className="w-full bg-[#0b0f14] border border-[#1f2733] rounded-lg p-3
                      text-sm text-gray-200 resize-none focus:outline-none
                      focus-visible:ring-2 focus-visible:ring-court-orange
@@ -181,7 +194,7 @@ export default function InvitePage() {
 
       {/* Enhancement 3: Social proof card */}
       <div className="card p-4 flex flex-col gap-3">
-        <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">🏀 Fantasy Hoops Community</p>
+        <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">🏀 {communityTitle}</p>
         <div className="grid grid-cols-3 gap-3">
           <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
             <p className="text-lg font-bold text-court-orange">
@@ -194,7 +207,9 @@ export default function InvitePage() {
             <p className="text-xs text-gray-500 mt-0.5 leading-tight">🏆 Weekly<br />Winners</p>
           </div>
           <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-court-orange">LRD</p>
+            <p className="text-lg font-bold text-court-orange">
+              {prizeTotal !== null ? `L${prizeTotal.toLocaleString()}` : "LRD"}
+            </p>
             <p className="text-xs text-gray-500 mt-0.5 leading-tight">💰 Prize Money<br />Awarded</p>
           </div>
         </div>

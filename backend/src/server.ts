@@ -30,6 +30,7 @@ import watchlistRoutes from "./routes/watchlistRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import pushRoutes from "./routes/pushRoutes";
 import communityRoutes from "./routes/communityRoutes";
+import platformSettingsRoutes from "./routes/platformSettingsRoutes";
 // Bootstrap push destination (registers with engine at import time)
 import "./services/pushDestinationHandler";
 
@@ -72,6 +73,7 @@ app.use("/", watchlistRoutes);        // /watchlist/*
 app.use("/", notificationRoutes);     // /notifications/*
 app.use("/", pushRoutes);             // /push/*
 app.use("/", communityRoutes);        // /community/*
+app.use("/", platformSettingsRoutes); // /platform-settings, /admin/platform-settings
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

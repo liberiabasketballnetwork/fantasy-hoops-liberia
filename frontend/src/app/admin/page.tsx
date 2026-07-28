@@ -6,6 +6,149 @@ import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { AppModal, ConfirmDialog, LoadingOverlay } from "@/components/ui";
 
+// ─── Platform Settings Card (ADMIN-014) ──────────────────────────────────
+
+function PlatformSettingsCard() {
+  const DEFAULTS = {
+    prizeMoneyAwarded: "",  currentWeeklyPrize: "",  currentSeason: "",
+    inviteHeadline: "",     communityHeadline: "",   announcement: "",
+    announcementEnabled: false, sponsorName: "",
+  };
+  const [form,    setForm]    = React.useState<any>(DEFAULTS);
+  const [orig,    setOrig]    = React.useState<any>(DEFAULTS);
+  const [loading, setLoading] = React.useState(true);
+  const [saving,  setSaving]  = React.useState(false);
+  const [msg,     setMsg]     = React.useState("");
+  const [errors,  setErrors]  = React.useState<Record<string,string>>({});
+
+  React.useEffect(() => {
+    api.get("/platform-settings").then((r: any) => {
+      const s = r.data;
+      const mapped = {
+        prizeMoneyAwarded:  String(s.prizeMoneyAwarded  ?? ""),
+        currentWeeklyPrize: String(s.currentWeeklyPrize ?? ""),
+        currentSeason:      String(s.currentSeason      ?? ""),
+        inviteHeadline:     s.inviteHeadline    ?? "",
+        communityHeadline:  s.communityHeadline ?? "",
+        announcement:       s.announcement      ?? "",
+        announcementEnabled: !!s.announcementEnabled,
+        sponsorName:        s.sponsorName       ?? "",
+      };
+      setForm(mapped); setOrig(mapped);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  function field(key: string, val: string) { setForm((f: any) => ({ ...f, [key]: val })); setErrors((e: any) => ({ ...e, [key]: "" })); }
+
+  async function handleSave() {
+    setSaving(true); setMsg(""); setErrors({});
+    try {
+      const payload = {
+        ...form,
+        prizeMoneyAwarded:  Number(form.prizeMoneyAwarded),
+        currentWeeklyPrize: Number(form.currentWeeklyPrize),
+      };
+      const res = await api.put("/admin/platform-settings", payload);
+      if (res.data.errors) {
+        const errs: Record<string,string> = {};
+        res.data.errors.forEach((e: any) => { errs[e.field] = e.message; });
+        setErrors(errs); setMsg(""); setSaving(false); return;
+      }
+      const updated = res.data.settings;
+      const mapped = {
+        prizeMoneyAwarded:  String(updated.prizeMoneyAwarded  ?? ""),
+        currentWeeklyPrize: String(updated.currentWeeklyPrize ?? ""),
+        currentSeason:      String(updated.currentSeason      ?? ""),
+        inviteHeadline:     updated.inviteHeadline    ?? "",
+        communityHeadline:  updated.communityHeadline ?? "",
+        announcement:       updated.announcement      ?? "",
+        announcementEnabled: !!updated.announcementEnabled,
+        sponsorName:        updated.sponsorName       ?? "",
+      };
+      setForm(mapped); setOrig(mapped);
+      setMsg("✅ Settings saved.");
+    } catch { setMsg("❌ Failed to save."); }
+    finally { setSaving(false); }
+  }
+
+  function handleCancel() { setForm(orig); setErrors({}); setMsg(""); }
+
+  if (loading) return <div className="card p-5 animate-pulse h-32" />;
+
+  const inputCls = (k: string) =>
+    `input-field ${errors[k] ? "border-red-500" : ""}`;
+
+  return (
+    <div className="card p-5">
+      <h2 className="font-bold mb-1">⚙️ Platform Settings</h2>
+      <p className="text-xs text-gray-500 mb-4">Configurable business values. Changes take effect immediately across the platform.</p>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+        {/* Prize Money */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Prize Money Awarded (LRD)</label>
+          <input type="number" min={0} className={inputCls("prizeMoneyAwarded")} value={form.prizeMoneyAwarded} onChange={e => field("prizeMoneyAwarded", e.target.value)} />
+          {errors.prizeMoneyAwarded && <p className="text-xs text-red-400">{errors.prizeMoneyAwarded}</p>}
+        </div>
+
+        {/* Weekly Prize */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Current Weekly Prize (LRD)</label>
+          <input type="number" min={0} className={inputCls("currentWeeklyPrize")} value={form.currentWeeklyPrize} onChange={e => field("currentWeeklyPrize", e.target.value)} />
+          {errors.currentWeeklyPrize && <p className="text-xs text-red-400">{errors.currentWeeklyPrize}</p>}
+        </div>
+
+        {/* Season */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Current Season</label>
+          <input className={inputCls("currentSeason")} value={form.currentSeason} onChange={e => field("currentSeason", e.target.value)} />
+          {errors.currentSeason && <p className="text-xs text-red-400">{errors.currentSeason}</p>}
+        </div>
+
+        {/* Sponsor */}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs text-gray-500">Sponsor Name</label>
+          <input className={inputCls("sponsorName")} value={form.sponsorName} onChange={e => field("sponsorName", e.target.value)} />
+          {errors.sponsorName && <p className="text-xs text-red-400">{errors.sponsorName}</p>}
+        </div>
+
+        {/* Invite headline */}
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <label className="text-xs text-gray-500">Invite Page Headline</label>
+          <input className={inputCls("inviteHeadline")} value={form.inviteHeadline} onChange={e => field("inviteHeadline", e.target.value)} />
+          {errors.inviteHeadline && <p className="text-xs text-red-400">{errors.inviteHeadline}</p>}
+        </div>
+
+        {/* Community headline */}
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <label className="text-xs text-gray-500">Community Section Title</label>
+          <input className={inputCls("communityHeadline")} value={form.communityHeadline} onChange={e => field("communityHeadline", e.target.value)} />
+          {errors.communityHeadline && <p className="text-xs text-red-400">{errors.communityHeadline}</p>}
+        </div>
+
+        {/* Announcement */}
+        <div className="flex flex-col gap-1 sm:col-span-2">
+          <label className="text-xs text-gray-500">Announcement Banner</label>
+          <div className="flex items-center gap-3 mb-1">
+            <div onClick={() => setForm((f: any) => ({ ...f, announcementEnabled: !f.announcementEnabled }))}
+              className={`w-9 h-5 rounded-full relative cursor-pointer transition-colors ${form.announcementEnabled ? "bg-court-green" : "bg-[#1f2733]"}`}>
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${form.announcementEnabled ? "translate-x-4" : "translate-x-0.5"}`} />
+            </div>
+            <span className="text-xs text-gray-400">{form.announcementEnabled ? "Enabled" : "Disabled"}</span>
+          </div>
+          <input className="input-field" placeholder="e.g. Draft closes Friday at 5 PM" value={form.announcement} onChange={e => field("announcement", e.target.value)} />
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 mt-4">
+        <button onClick={handleSave} disabled={saving} className="btn-primary text-sm disabled:opacity-50">{saving ? "Saving…" : "Save Settings"}</button>
+        <button onClick={handleCancel} disabled={saving} className="px-3 py-1.5 rounded bg-[#1f2733] text-xs font-semibold disabled:opacity-50">Cancel</button>
+        {msg && <span className="text-xs">{msg}</span>}
+      </div>
+    </div>
+  );
+}
+
 // ─── Phone Audit Card (AUTH-011) ─────────────────────────────────────────
 
 function PhoneAuditCard() {
@@ -1616,6 +1759,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* ADMIN-014: Platform Settings */}
+      <PlatformSettingsCard />
 
       {/* AUTH-011: Phone Audit */}
       <PhoneAuditCard />
