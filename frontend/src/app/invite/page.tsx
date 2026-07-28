@@ -1,22 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ToastContainer, useToast } from "@/components/ui";
+import { api } from "@/lib/api";
 
-// ─── Constants ─────────────────────────────────────────────────────────────
+// ─── Enhancement 1: Updated invite message ────────────────────────────────
 
 const INVITE_URL = "https://fantasyhoops.online";
 
 const INVITE_MESSAGE = `🏀 Think you know Liberian basketball? Prove it!
 
-Join me on Fantasy Hoops Liberia and build your dream team. Compete every week, climb the leaderboard, and win real prizes!
+Join me on Fantasy Hoops Liberia and build your dream team.
 
-Play now: ${INVITE_URL}`;
+🏆 Win weekly prizes
+📈 Climb the leaderboard
+🔥 Challenge your friends
+
+Play now:
+${INVITE_URL}`;
 
 const INVITE_MESSAGE_ENCODED = encodeURIComponent(INVITE_MESSAGE);
 const INVITE_URL_ENCODED     = encodeURIComponent(INVITE_URL);
 
-// ─── Share channels ─────────────────────────────────────────────────────────
+// ─── Share channels (unchanged from GEP-001) ──────────────────────────────
 
 const CHANNELS = [
   {
@@ -62,14 +68,25 @@ const CHANNELS = [
   },
 ] as const;
 
-// ─── Page ───────────────────────────────────────────────────────────────────
+// ─── Page ─────────────────────────────────────────────────────────────────
 
 export default function InvitePage() {
   const { toasts, toast, dismiss } = useToast();
-  const [copied,   setCopied]   = useState(false);
-  const [sharing,  setSharing]  = useState(false);
+  const [copied,  setCopied]  = useState(false);
+  const [sharing, setSharing] = useState(false);
 
-  // ── Copy link ────────────────────────────────────────────────────────────
+  // Enhancement 3: Social proof — live manager count, static winners/prizes
+  const [managerCount, setManagerCount] = useState<number | null>(null);
+  useEffect(() => {
+    api.get("/admin/selection-stats")
+      .then((res) => {
+        const total = res.data?.total_managers ?? res.data?.users ?? null;
+        if (typeof total === "number") setManagerCount(total);
+      })
+      .catch(() => { /* non-fatal — show static fallback */ });
+  }, []);
+
+  // ── Copy ────────────────────────────────────────────────────────────────
   async function handleCopy() {
     try {
       await navigator.clipboard.writeText(INVITE_MESSAGE);
@@ -77,14 +94,13 @@ export default function InvitePage() {
       toast("success", "✓ Invite message copied! Share it anywhere.");
       setTimeout(() => setCopied(false), 3000);
     } catch {
-      // Fallback: select the textarea
       const el = document.getElementById("invite-text") as HTMLTextAreaElement | null;
       el?.select();
       toast("info", "Couldn't auto-copy — select the text above and copy manually.");
     }
   }
 
-  // ── Native share (Web Share API) ─────────────────────────────────────────
+  // ── Native share ────────────────────────────────────────────────────────
   async function handleNativeShare() {
     if (!navigator.share) return;
     setSharing(true);
@@ -92,19 +108,16 @@ export default function InvitePage() {
       await navigator.share({ title: "Fantasy Hoops Liberia", text: INVITE_MESSAGE, url: INVITE_URL });
       toast("success", "🙌 Thanks for spreading the word!");
     } catch (err: any) {
-      // AbortError = user cancelled — not an error
-      if (err?.name !== "AbortError") {
-        toast("error", "Share failed. Try another option below.");
-      }
+      if (err?.name !== "AbortError") toast("error", "Share failed. Try another option below.");
     } finally {
       setSharing(false);
     }
   }
 
-  // ── Social/SMS channel share ─────────────────────────────────────────────
-  function handleChannel(channel: typeof CHANNELS[number]) {
-    window.open(channel.getUrl(), "_blank", "noopener,noreferrer");
-    toast("success", `🙌 Thanks for sharing via ${channel.label}!`);
+  // ── Social channel ──────────────────────────────────────────────────────
+  function handleChannel(ch: typeof CHANNELS[number]) {
+    window.open(ch.getUrl(), "_blank", "noopener,noreferrer");
+    toast("success", `🙌 Thanks for sharing via ${ch.label}!`);
   }
 
   const nativeShareSupported = typeof navigator !== "undefined" && !!navigator.share;
@@ -114,21 +127,22 @@ export default function InvitePage() {
       <ToastContainer toasts={toasts} onDismiss={dismiss} />
 
       {/* Header */}
-      <div>
+      <div className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold">🏀 Invite a Friend</h1>
-        <p className="text-sm text-gray-400 mt-1">
-          Help grow the Fantasy Hoops Liberia community.
-          Share the game with friends who love basketball!
+
+        {/* Enhancement 2: Competition banner */}
+        <p className="text-sm font-semibold text-court-orange">
+          Challenge your friends and see who knows Liberian basketball best!
         </p>
       </div>
 
-      {/* Invite message preview */}
+      {/* Invite message */}
       <div className="card p-4 flex flex-col gap-3">
         <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Your Invite Message</p>
         <textarea
           id="invite-text"
           readOnly
-          rows={6}
+          rows={8}
           value={INVITE_MESSAGE}
           className="w-full bg-[#0b0f14] border border-[#1f2733] rounded-lg p-3
                      text-sm text-gray-200 resize-none focus:outline-none
@@ -136,8 +150,6 @@ export default function InvitePage() {
                      leading-relaxed font-mono"
           aria-label="Invite message"
         />
-
-        {/* Primary actions */}
         <div className="flex flex-wrap gap-2">
           <button
             onClick={handleCopy}
@@ -151,7 +163,6 @@ export default function InvitePage() {
           >
             {copied ? "✓ Copied!" : "📋 Copy Message"}
           </button>
-
           {nativeShareSupported && (
             <button
               onClick={handleNativeShare}
@@ -159,13 +170,33 @@ export default function InvitePage() {
               className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold
                          min-h-[44px] bg-[#1f2733] hover:bg-[#2a3441] text-gray-200
                          border border-[#2a3441] transition-colors focus:outline-none
-                         focus-visible:ring-2 focus-visible:ring-court-orange
-                         disabled:opacity-50"
+                         focus-visible:ring-2 focus-visible:ring-court-orange disabled:opacity-50"
               aria-label="Share using device share sheet"
             >
               {sharing ? "Sharing…" : "↑ Share"}
             </button>
           )}
+        </div>
+      </div>
+
+      {/* Enhancement 3: Social proof card */}
+      <div className="card p-4 flex flex-col gap-3">
+        <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">🏀 Fantasy Hoops Community</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className="text-lg font-bold text-court-orange">
+              {managerCount !== null ? managerCount : "—"}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-tight">👥 Registered<br />Managers</p>
+          </div>
+          <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className="text-lg font-bold text-court-orange">3</p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-tight">🏆 Weekly<br />Winners</p>
+          </div>
+          <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className="text-lg font-bold text-court-orange">LRD</p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-tight">💰 Prize Money<br />Awarded</p>
+          </div>
         </div>
       </div>
 
@@ -190,10 +221,25 @@ export default function InvitePage() {
         </div>
       </div>
 
-      {/* Footer note */}
-      <p className="text-xs text-gray-600 text-center pb-2">
-        🇱🇷 Every invitation helps build the Liberian fantasy basketball community.
+      {/* Enhancement 4: Updated footer */}
+      <p className="text-xs text-gray-500 text-center">
+        🇱🇷 The more managers join, the bigger the competition becomes. Invite a friend today!
       </p>
+
+      {/* Enhancement 5: Coming Soon teaser */}
+      <div
+        aria-label="Coming soon features"
+        className="card border border-dashed border-[#2a3441] p-4 flex flex-col gap-2 opacity-70"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">🚀</span>
+          <p className="text-xs font-bold text-gray-400 uppercase tracking-wide">Coming Soon</p>
+          <span className="text-[10px] bg-[#1f2733] text-gray-500 px-2 py-0.5 rounded-full">Preview</span>
+        </div>
+        <p className="text-sm text-gray-500 leading-relaxed">
+          Invite friends. Earn badges. Unlock exclusive rewards.
+        </p>
+      </div>
     </div>
   );
 }
