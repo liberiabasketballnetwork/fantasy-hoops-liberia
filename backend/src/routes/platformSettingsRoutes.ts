@@ -11,8 +11,20 @@ import {
   getPlatformSettings,
   updatePlatformSettings,
 } from "../services/platformSettingsService";
+import { getPlatformStats } from "../services/platformStatsService";
 
 const router = express.Router();
+
+// ─── Public: community statistics ────────────────────────────────────────
+
+router.get("/platform-stats", async (_req, res) => {
+  try {
+    const stats = await getPlatformStats();
+    res.json(stats);
+  } catch {
+    res.status(500).json({ error: "Failed to load platform statistics." });
+  }
+});
 
 // ─── Public: read all settings ────────────────────────────────────────────
 

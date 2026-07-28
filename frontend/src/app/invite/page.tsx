@@ -79,21 +79,30 @@ export default function InvitePage() {
   // Platform Settings — headline, prizes, manager count
   const [headline,       setHeadline]       = useState("Think you know Liberian basketball? Prove it!");
   const [communityTitle, setCommunityTitle] = useState("Fantasy Hoops Community");
-  const [prizeTotal,     setPrizeTotal]     = useState<number | null>(null);
-  const [managerCount,   setManagerCount]   = useState<number | null>(null);
+
+  // Platform Stats — single source for all community metrics (ADMIN-015)
+  const [stats, setStats] = useState<{
+    registeredManagers:     number | null;
+    activeManagersThisWeek: number | null;
+    completedGameweeks:     number | null;
+    prizeMoneyAwarded:      number | null;
+  }>({ registeredManagers: null, activeManagersThisWeek: null, completedGameweeks: null, prizeMoneyAwarded: null });
 
   useEffect(() => {
-    // Load platform settings
+    // Load platform settings for headline / community title
     api.get("/platform-settings").then((res: any) => {
       if (res.data.inviteHeadline)    setHeadline(res.data.inviteHeadline);
       if (res.data.communityHeadline) setCommunityTitle(res.data.communityHeadline);
-      if (res.data.prizeMoneyAwarded) setPrizeTotal(Number(res.data.prizeMoneyAwarded));
     }).catch(() => {});
 
-    // Live manager count
-    api.get("/admin/selection-stats").then((res: any) => {
-      const total = res.data?.total_managers ?? res.data?.users ?? null;
-      if (typeof total === "number") setManagerCount(total);
+    // Load public community statistics (ADMIN-015)
+    api.get("/platform-stats").then((res: any) => {
+      setStats({
+        registeredManagers:     res.data.registeredManagers     ?? null,
+        activeManagersThisWeek: res.data.activeManagersThisWeek ?? null,
+        completedGameweeks:     res.data.completedGameweeks      ?? null,
+        prizeMoneyAwarded:      res.data.prizeMoneyAwarded       ?? null,
+      });
     }).catch(() => {});
   }, []);
 
@@ -192,23 +201,33 @@ export default function InvitePage() {
         </div>
       </div>
 
-      {/* Enhancement 3: Social proof card */}
+      {/* Social proof card — ADMIN-015: /platform-stats */}
       <div className="card p-4 flex flex-col gap-3">
         <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">🏀 {communityTitle}</p>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
             <p className="text-lg font-bold text-court-orange">
-              {managerCount !== null ? managerCount : "—"}
+              {stats.registeredManagers !== null ? stats.registeredManagers : "—"}
             </p>
             <p className="text-xs text-gray-500 mt-0.5 leading-tight">👥 Registered<br />Managers</p>
           </div>
           <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
-            <p className="text-lg font-bold text-court-orange">3</p>
-            <p className="text-xs text-gray-500 mt-0.5 leading-tight">🏆 Weekly<br />Winners</p>
+            <p className="text-lg font-bold text-court-orange">
+              {stats.activeManagersThisWeek !== null ? stats.activeManagersThisWeek : "—"}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-tight">🏀 Active<br />This Week</p>
           </div>
           <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
             <p className="text-lg font-bold text-court-orange">
-              {prizeTotal !== null ? `L${prizeTotal.toLocaleString()}` : "LRD"}
+              {stats.completedGameweeks !== null ? stats.completedGameweeks : "—"}
+            </p>
+            <p className="text-xs text-gray-500 mt-0.5 leading-tight">🏆 Weeks<br />Completed</p>
+          </div>
+          <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className="text-lg font-bold text-court-orange">
+              {stats.prizeMoneyAwarded !== null
+                ? `L${Number(stats.prizeMoneyAwarded).toLocaleString()}`
+                : "—"}
             </p>
             <p className="text-xs text-gray-500 mt-0.5 leading-tight">💰 Prize Money<br />Awarded</p>
           </div>
