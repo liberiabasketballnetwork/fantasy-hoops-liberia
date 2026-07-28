@@ -6,6 +6,97 @@ import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { AppModal, ConfirmDialog, LoadingOverlay } from "@/components/ui";
 
+// ─── Phone Audit Card (AUTH-011) ─────────────────────────────────────────
+
+function PhoneAuditCard() {
+  const [result,  setResult]  = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [showDetails, setShowDetails] = React.useState(false);
+
+  async function runAudit() {
+    setLoading(true);
+    try {
+      const res = await api.get("/admin/phone-audit");
+      setResult(res.data);
+    } catch { /* non-fatal */ }
+    finally { setLoading(false); }
+  }
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h2 className="font-bold">📞 Phone Number Audit</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Read-only scan. No user data is modified.</p>
+        </div>
+        <button onClick={runAudit} disabled={loading} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold disabled:opacity-50">
+          {loading ? "Scanning…" : "🔍 Run Audit"}
+        </button>
+      </div>
+
+      {result && (
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {[
+              { label: "Total Users",          value: result.summary.total_users,          cls: "" },
+              { label: "Properly Formatted",   value: result.summary.properly_formatted,   cls: "text-court-green" },
+              { label: "Missing Leading Zero", value: result.summary.missing_leading_zero, cls: result.summary.missing_leading_zero > 0 ? "text-yellow-400" : "" },
+              { label: "Apostrophe Protected", value: result.summary.apostrophe_protected, cls: "" },
+              { label: "Invalid Numbers",      value: result.summary.invalid_numbers,      cls: result.summary.invalid_numbers > 0 ? "text-red-400" : "" },
+              { label: "Duplicate Phones",     value: result.summary.duplicate_normalized, cls: result.summary.duplicate_normalized > 0 ? "text-red-400" : "" },
+            ].map(({ label, value, cls }) => (
+              <div key={label} className="bg-[#0b0f14] rounded-lg p-3">
+                <p className="text-xs text-gray-500">{label}</p>
+                <p className={`text-lg font-bold ${cls || "text-gray-200"}`}>{value}</p>
+              </div>
+            ))}
+          </div>
+
+          {result.duplicates.length > 0 && (
+            <div className="rounded-lg border border-red-700/40 bg-red-900/10 p-3 text-xs">
+              <p className="text-red-400 font-semibold mb-2">⚠️ Duplicate Phone Numbers</p>
+              {result.duplicates.map((d: any, i: number) => (
+                <p key={i} className="text-red-300 font-mono">{d.normalized_phone} — {d.count} accounts</p>
+              ))}
+            </div>
+          )}
+
+          <details open={showDetails} onToggle={(e: any) => setShowDetails(e.target.open)} className="group">
+            <summary className="cursor-pointer text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1 w-fit">
+              <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+              View all {result.details.length} users
+            </summary>
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 border-b border-[#1f2733]">
+                    <th className="text-left py-2 pr-3">Manager</th>
+                    <th className="text-left py-2 px-2">Raw Phone</th>
+                    <th className="text-left py-2 px-2">Normalized</th>
+                    <th className="text-center py-2 px-2">Apos</th>
+                    <th className="text-center py-2 pl-2">Valid</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {result.details.map((d: any, i: number) => (
+                    <tr key={i} className="border-b border-[#1f2733]">
+                      <td className="py-1.5 pr-3">{d.display_name}</td>
+                      <td className="py-1.5 px-2 font-mono text-gray-400">{d.raw_phone}</td>
+                      <td className="py-1.5 px-2 font-mono">{d.normalized}</td>
+                      <td className="py-1.5 px-2 text-center">{d.has_apostrophe ? "✓" : "—"}</td>
+                      <td className={`py-1.5 pl-2 text-center font-bold ${d.valid ? "text-court-green" : "text-red-400"}`}>{d.valid ? "✅" : "❌"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </details>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Community Settings Card ──────────────────────────────────────────────
 
 function CommunitySettingsCard() {
@@ -1525,6 +1616,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* AUTH-011: Phone Audit */}
+      <PhoneAuditCard />
 
       {/* Community Settings — FEATURE-001 */}
       <CommunitySettingsCard />

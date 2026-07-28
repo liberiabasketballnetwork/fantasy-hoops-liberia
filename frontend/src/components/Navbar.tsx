@@ -53,6 +53,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/achievements",  label: "Achievements"   },
       { href: "/watchlist",     label: "Watchlist"      },
       { href: "/history",       label: "History"        },
+      { href: "/invite",        label: "Invite Friends" },
     ],
   },
   {

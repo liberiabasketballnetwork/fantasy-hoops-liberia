@@ -16,6 +16,7 @@ import {
 } from "../services/sheetsService";
 import { logAdminAction } from "../services/adminActionLogger";
 import { calculatePlayerFantasyScore } from "../services/scoringEngine";
+import { normalizeSheetPhone, stripApostrophe, isValidPhone } from "../utils/phoneUtils";
 
 const router = express.Router();
 router.use(authenticate, requireAdmin);
@@ -224,6 +225,58 @@ router.get("/data/player-stats",     async (_req, res) => { try { res.json({ row
 router.get("/data/leaderboard",      async (_req, res) => { try { res.json({ rows: await getSheetData("Leaderboard") });      } catch { res.status(500).json({ error: "Failed" }); } });
 router.get("/data/games",            async (_req, res) => { try { res.json({ rows: await getSheetData("Games") });            } catch { res.status(500).json({ error: "Failed" }); } });
 router.get("/data/weekly-gameweek",  async (_req, res) => { try { res.json({ rows: await getSheetData("Weekly_Gameweek") }); } catch { res.status(500).json({ error: "Failed" }); } });
+
+// AUTH-011: Read-only phone number audit
+router.get("/phone-audit", async (_req, res) => {
+  try {
+    const users = await getSheetData("Users");
+    const normalizedCounts: Record<string, number> = {};
+
+    let properlyFormatted  = 0;  // starts with 0, 9-10 digits
+    let missingLeadingZero = 0;  // normalized adds a zero
+    let apostropheProtected = 0; // stored with ' prefix
+    let invalid = 0;
+
+    const details = users.map((u) => {
+      const raw        = String(u.phone || "");
+      const hasApos    = raw.startsWith("'");
+      const stripped   = hasApos ? raw.slice(1) : raw;
+      const normalized = normalizeSheetPhone(raw);
+      const valid      = isValidPhone(normalized);
+
+      if (hasApos) apostropheProtected++;
+      if (!stripped.startsWith("0") && normalized.startsWith("0")) missingLeadingZero++;
+      if (valid && stripped.startsWith("0")) properlyFormatted++;
+      if (!valid) invalid++;
+
+      // Track duplicates
+      if (normalized) {
+        normalizedCounts[normalized] = (normalizedCounts[normalized] || 0) + 1;
+      }
+
+      return { user_id: u.user_id, display_name: u.display_name || u.full_name, raw_phone: raw, normalized, has_apostrophe: hasApos, valid };
+    });
+
+    const duplicates = Object.entries(normalizedCounts)
+      .filter(([, count]) => count > 1)
+      .map(([phone, count]) => ({ normalized_phone: phone, count }));
+
+    res.json({
+      summary: {
+        total_users:         users.length,
+        properly_formatted:  properlyFormatted,
+        missing_leading_zero: missingLeadingZero,
+        apostrophe_protected: apostropheProtected,
+        invalid_numbers:     invalid,
+        duplicate_normalized: duplicates.length,
+      },
+      duplicates,
+      details,
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Phone audit failed." });
+  }
+});
 
 router.delete("/users/:id", async (req, res) => {
   try {

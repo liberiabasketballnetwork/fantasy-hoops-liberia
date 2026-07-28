@@ -4,7 +4,7 @@ import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { appendRow, getSheetData, updateRow } from "../services/sheetsService";
-import { normalizePhoneNumber, formatPhoneForSheet, stripApostrophe } from "../utils/phoneUtils";
+import { normalizePhoneNumber, formatPhoneForSheet, stripApostrophe, normalizeSheetPhone, isValidPhone } from "../utils/phoneUtils";
 import { validateDisplayName, isDisplayNameTaken } from "../utils/displayNameUtils";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
@@ -18,7 +18,7 @@ router.post("/register", async (req, res) => {
     const trimmedDisplayName = dnValidation.trimmed!;
     const normalizedPhone = normalizePhoneNumber(parsed.phone);
     const allUsers = await getSheetData("Users");
-    if (allUsers.find((u) => normalizePhoneNumber(stripApostrophe(String(u.phone || ""))) === normalizedPhone)) return res.status(409).json({ error: "An account with this phone number already exists." });
+    if (allUsers.find((u) => normalizeSheetPhone(String(u.phone || "")) === normalizedPhone)) return res.status(409).json({ error: "An account with this phone number already exists." });
     if (isDisplayNameTaken(trimmedDisplayName, allUsers)) return res.status(409).json({ error: `The display name "${trimmedDisplayName}" is already taken. Please choose a different one.` });
     const password_hash = await bcrypt.hash(parsed.password, 10);
     const user_id = uuidv4();
@@ -44,7 +44,7 @@ router.post("/login", async (req, res) => {
     if (!rawIdentifier) return res.status(401).json({ error: "Invalid phone number or password" });
     const normalizedLoginPhone = normalizePhoneNumber(rawIdentifier);
     const allUsers = await getSheetData("Users");
-    const user = allUsers.find((u) => normalizePhoneNumber(stripApostrophe(String(u.phone || ""))) === normalizedLoginPhone);
+    const user = allUsers.find((u) => normalizeSheetPhone(String(u.phone || "")) === normalizedLoginPhone);
     if (!user) return res.status(401).json({ error: "Invalid phone number or password" });
     const valid = await bcrypt.compare(parsed.password, user.password_hash);
     if (!valid) return res.status(401).json({ error: "Invalid phone number or password" });
