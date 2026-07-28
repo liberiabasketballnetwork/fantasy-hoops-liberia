@@ -79,6 +79,7 @@ export default function InvitePage() {
   // Platform Settings — headline, prizes, manager count
   const [headline,       setHeadline]       = useState("Think you know Liberian basketball? Prove it!");
   const [communityTitle, setCommunityTitle] = useState("Fantasy Hoops Community");
+  const [myCode,         setMyCode]         = useState<string | null>(null);
 
   // Platform Stats — single source for all community metrics (ADMIN-015)
   const [stats, setStats] = useState<{
@@ -95,7 +96,10 @@ export default function InvitePage() {
       if (res.data.communityHeadline) setCommunityTitle(res.data.communityHeadline);
     }).catch(() => {});
 
-    // Load public community statistics (ADMIN-015)
+    // Load personal referral code (GEP-002.1)
+    api.get("/referral/my-code").then((res: any) => {
+      setMyCode(res.data.referral_code);
+    }).catch(() => {});
     api.get("/platform-stats").then((res: any) => {
       setStats({
         registeredManagers:     res.data.registeredManagers     ?? null,
@@ -233,6 +237,27 @@ export default function InvitePage() {
           </div>
         </div>
       </div>
+
+      {/* Personal referral code (GEP-002.1) */}
+      {myCode && (
+        <div className="card p-4 flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-1">Your Referral Code</p>
+            <span className="text-2xl font-bold text-court-orange tracking-widest">{myCode}</span>
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <button
+              onClick={handleCopy}
+              className="px-3 py-2 rounded text-xs font-semibold min-h-[40px] bg-[#1f2733] hover:bg-[#2a3441] text-gray-200"
+            >
+              📋 Copy Code
+            </button>
+            <a href="/referrals" className="px-3 py-2 rounded text-xs font-semibold min-h-[40px] bg-[#1f2733] hover:bg-[#2a3441] text-gray-200 flex items-center">
+              View History →
+            </a>
+          </div>
+        </div>
+      )}
 
       {/* Share channels */}
       <div className="card p-4 flex flex-col gap-3">

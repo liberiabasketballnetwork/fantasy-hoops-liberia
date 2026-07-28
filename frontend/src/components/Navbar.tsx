@@ -54,6 +54,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/watchlist",     label: "Watchlist"      },
       { href: "/history",       label: "History"        },
       { href: "/invite",        label: "Invite Friends" },
+      { href: "/referrals",     label: "My Referrals"   },
     ],
   },
   {

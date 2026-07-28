@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { appendRow, getSheetData, updateRow } from "../services/sheetsService";
 import { normalizePhoneNumber, formatPhoneForSheet, stripApostrophe, normalizeSheetPhone, isValidPhone } from "../utils/phoneUtils";
+import { generateReferralCode, validateReferralCode, assignReferral, findReferrerByCode } from "../services/referralService";
 import { validateDisplayName, isDisplayNameTaken } from "../utils/displayNameUtils";
 import { authenticate, AuthRequest } from "../middleware/auth";
 
@@ -12,20 +13,76 @@ const router = express.Router();
 
 router.post("/register", async (req, res) => {
   try {
-    const parsed = z.object({ full_name: z.string().min(2), display_name: z.string().min(1), phone: z.string().min(6), password: z.string().min(6), email: z.string().email().optional().or(z.literal("")).default("") }).parse(req.body);
+    const parsed = z.object({
+      full_name:    z.string().min(2),
+      display_name: z.string().min(1),
+      phone:        z.string().min(6),
+      password:     z.string().min(6),
+      email:        z.string().email().optional().or(z.literal("")).default(""),
+      ref:          z.string().optional(),   // GEP-002.1: referral code from URL
+    }).parse(req.body);
+
     const dnValidation = validateDisplayName(parsed.display_name);
     if (!dnValidation.valid) return res.status(400).json({ error: dnValidation.error });
     const trimmedDisplayName = dnValidation.trimmed!;
+
     const normalizedPhone = normalizePhoneNumber(parsed.phone);
     const allUsers = await getSheetData("Users");
-    if (allUsers.find((u) => normalizeSheetPhone(String(u.phone || "")) === normalizedPhone)) return res.status(409).json({ error: "An account with this phone number already exists." });
-    if (isDisplayNameTaken(trimmedDisplayName, allUsers)) return res.status(409).json({ error: `The display name "${trimmedDisplayName}" is already taken. Please choose a different one.` });
+
+    if (allUsers.find((u) => normalizeSheetPhone(String(u.phone || "")) === normalizedPhone))
+      return res.status(409).json({ error: "An account with this phone number already exists." });
+    if (isDisplayNameTaken(trimmedDisplayName, allUsers))
+      return res.status(409).json({ error: `The display name "${trimmedDisplayName}" is already taken. Please choose a different one.` });
+
+    // GEP-002.1: validate referral code before creating account
+    const incomingRef = parsed.ref?.trim().toUpperCase() || "";
+    if (incomingRef) {
+      const refCheck = await findReferrerByCode(incomingRef);
+      if (!refCheck) return res.status(400).json({ error: "Invalid referral code." });
+    }
+
     const password_hash = await bcrypt.hash(parsed.password, 10);
-    const user_id = uuidv4();
-    const email = (parsed.email || "").toLowerCase();
-    await appendRow("Users", { user_id, full_name: parsed.full_name, display_name: trimmedDisplayName, email, password_hash, phone: formatPhoneForSheet(normalizedPhone), created_at: new Date().toISOString(), last_login: "" });
-    const token = jwt.sign({ user_id, phone: normalizedPhone, isAdmin: false }, process.env.JWT_SECRET as string, { expiresIn: process.env.JWT_EXPIRES_IN as any || "7d" });
-    res.status(201).json({ token, user: { user_id, full_name: parsed.full_name, display_name: trimmedDisplayName, phone: normalizedPhone, email } });
+    const user_id       = uuidv4();
+    const email         = (parsed.email || "").toLowerCase();
+
+    // GEP-002.1: generate unique referral code for new user
+    const referral_code = await generateReferralCode();
+
+    await appendRow("Users", {
+      user_id,
+      full_name:    parsed.full_name,
+      display_name: trimmedDisplayName,
+      email,
+      password_hash,
+      phone:        formatPhoneForSheet(normalizedPhone),
+      created_at:   new Date().toISOString(),
+      last_login:   "",
+      referral_code,
+      referred_by:  incomingRef || "",
+      referral_date: incomingRef ? new Date().toISOString() : "",
+    });
+
+    // GEP-002.1: persist referral relationship if code was used
+    if (incomingRef) {
+      const referrer_user_id = await findReferrerByCode(incomingRef);
+      if (referrer_user_id) {
+        // Fire-and-forget — referral recording must never block registration
+        assignReferral(referrer_user_id, user_id, incomingRef).catch((e) =>
+          console.warn("[Referral] assignReferral failed:", e?.message)
+        );
+      }
+    }
+
+    const token = jwt.sign(
+      { user_id, phone: normalizedPhone, isAdmin: false },
+      process.env.JWT_SECRET as string,
+      { expiresIn: process.env.JWT_EXPIRES_IN as any || "7d" }
+    );
+
+    res.status(201).json({
+      token,
+      user: { user_id, full_name: parsed.full_name, display_name: trimmedDisplayName, phone: normalizedPhone, email },
+    });
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid input", details: err.errors });
     res.status(500).json({ error: "Registration failed" });

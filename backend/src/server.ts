@@ -31,6 +31,8 @@ import notificationRoutes from "./routes/notificationRoutes";
 import pushRoutes from "./routes/pushRoutes";
 import communityRoutes from "./routes/communityRoutes";
 import platformSettingsRoutes from "./routes/platformSettingsRoutes";
+import referralRoutes from "./routes/referralRoutes";
+import { migrateExistingUsers } from "./services/referralService";
 // Bootstrap push destination (registers with engine at import time)
 import "./services/pushDestinationHandler";
 
@@ -74,6 +76,7 @@ app.use("/", notificationRoutes);     // /notifications/*
 app.use("/", pushRoutes);             // /push/*
 app.use("/", communityRoutes);        // /community/*
 app.use("/", platformSettingsRoutes); // /platform-settings, /admin/platform-settings
+app.use("/", referralRoutes);         // /referral/*
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
@@ -82,4 +85,10 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
   res.status(500).json({ error: "Internal server error" });
 });
 
-app.listen(PORT, () => console.log(`Fantasy Hoops Liberia API running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`Fantasy Hoops Liberia API running on port ${PORT}`);
+  // GEP-002.1: assign referral codes to any existing users who lack one
+  migrateExistingUsers().catch((e) =>
+    console.warn("[Referral] Migration error:", e?.message)
+  );
+});

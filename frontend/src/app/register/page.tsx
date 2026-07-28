@@ -1,32 +1,41 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { api } from "@/lib/api";
 import { useAuth } from "@/context/AuthContext";
 
 interface FormData {
-  full_name: string;
+  full_name:    string;
   display_name: string;
-  phone: string;
-  email: string;
-  password: string;
+  phone:        string;
+  email:        string;
+  password:     string;
 }
 
-export default function RegisterPage() {
+function RegisterForm() {
   const { register, handleSubmit, formState: { errors } } = useForm<FormData>();
-  const [error, setError] = useState("");
+  const [error,   setError]   = useState("");
   const [loading, setLoading] = useState(false);
-  const router = useRouter();
-  const { login } = useAuth();
+  const [refCode, setRefCode] = useState("");     // GEP-002.1
+  const router       = useRouter();
+  const searchParams = useSearchParams();
+  const { login }    = useAuth();
+
+  // GEP-002.1: read referral code from URL query param
+  useEffect(() => {
+    const ref = searchParams.get("ref") || "";
+    if (ref) setRefCode(ref.toUpperCase());
+  }, [searchParams]);
 
   async function onSubmit(data: FormData) {
     setError("");
     setLoading(true);
     try {
-      const res = await api.post("/register", data);
+      // GEP-002.1: include ref code in registration payload
+      const res = await api.post("/register", { ...data, ref: refCode || undefined });
       login(res.data.token, res.data.user);
       router.push("/dashboard");
     } catch (err: any) {
@@ -42,6 +51,17 @@ export default function RegisterPage() {
       <p className="text-sm text-gray-400 mb-5">
         Free forever. Join Fantasy Hoops Liberia.
       </p>
+
+      {/* GEP-002.1: referral banner */}
+      {refCode && (
+        <div className="mb-4 rounded-lg bg-court-orange/10 border border-court-orange/30 px-4 py-3 flex items-center gap-2 text-sm">
+          <span className="text-court-orange font-bold">🏀</span>
+          <span className="text-gray-200">
+            You were invited by a friend! Referral code:{" "}
+            <strong className="text-court-orange">{refCode}</strong>
+          </span>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-4">
         {/* Full Name */}
@@ -174,5 +194,13 @@ export default function RegisterPage() {
         <Link href="/login" className="text-court-orange">Sign in</Link>
       </p>
     </div>
+  );
+}
+
+export default function RegisterPage() {
+  return (
+    <Suspense fallback={<div className="max-w-md mx-auto card p-6 h-64 animate-pulse" />}>
+      <RegisterForm />
+    </Suspense>
   );
 }
