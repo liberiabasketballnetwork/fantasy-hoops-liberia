@@ -33,6 +33,7 @@ import communityRoutes from "./routes/communityRoutes";
 import platformSettingsRoutes from "./routes/platformSettingsRoutes";
 import referralRoutes from "./routes/referralRoutes";
 import teamRoutes from "./routes/teamRoutes";
+import referralRewardRoutes from "./routes/referralRewardRoutes";
 import { migrateExistingUsers } from "./services/referralService";
 import { migrateTeamStatuses } from "./services/playerEligibilityService";
 // Bootstrap push destination (registers with engine at import time)
@@ -79,7 +80,8 @@ app.use("/", pushRoutes);             // /push/*
 app.use("/", communityRoutes);        // /community/*
 app.use("/", platformSettingsRoutes); // /platform-settings, /admin/platform-settings
 app.use("/", referralRoutes);         // /referral/*
-app.use("/", teamRoutes);             // /teams, /admin/teams, /admin/teams/:id/status
+app.use("/", teamRoutes);             // /teams, /admin/teams
+app.use("/", referralRewardRoutes);   // /referral/my-rewards, /admin/referral-rewards/*
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));

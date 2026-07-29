@@ -19,6 +19,11 @@ export const PS_KEYS = {
   ANNOUNCEMENT:          "Announcement",
   ANNOUNCEMENT_ENABLED:  "AnnouncementEnabled",
   SPONSOR_NAME:          "SponsorName",
+  // FEATURE-003: Referral rewards
+  REFERRAL_REWARD_ENABLED:             "ReferralRewardEnabled",
+  REFERRAL_REWARD_AMOUNT_LRD:          "ReferralRewardAmountLrd",
+  REFERRAL_QUALIFICATION_WINDOW_WEEKS: "ReferralQualificationWindowWeeks",
+  REFERRAL_MAX_REWARDS_PER_MONTH:      "ReferralMaxRewardsPerMonth",
 } as const;
 
 // ─── Defaults (used when sheet row is missing) ────────────────────────────
@@ -32,6 +37,11 @@ const DEFAULTS: Record<string, string> = {
   [PS_KEYS.ANNOUNCEMENT]:         "",
   [PS_KEYS.ANNOUNCEMENT_ENABLED]: "FALSE",
   [PS_KEYS.SPONSOR_NAME]:         "Orange Liberia",
+  // FEATURE-003: Referral rewards
+  [PS_KEYS.REFERRAL_REWARD_ENABLED]:           "FALSE",
+  [PS_KEYS.REFERRAL_REWARD_AMOUNT_LRD]:        "500",
+  [PS_KEYS.REFERRAL_QUALIFICATION_WINDOW_WEEKS]: "4",
+  [PS_KEYS.REFERRAL_MAX_REWARDS_PER_MONTH]:    "10",
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────

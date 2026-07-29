@@ -26,6 +26,7 @@ export type NotificationType =
   | "LEAGUE"
   | "REPORT"
   | "ADVISOR"
+  | "REFERRAL"
   | "SYSTEM"
   | "ADMIN";
 
@@ -68,7 +69,8 @@ const DEFAULT_PRIORITY: Record<NotificationType, NotificationPriority> = {
   PRICE:       "normal",
   LEAGUE:      "normal",
   REPORT:      "normal",
-  ADVISOR:     "high",     // Advisor alerts are time-sensitive (lineup decisions)
+  ADVISOR:     "high",
+  REFERRAL:    "normal",
   SYSTEM:      "normal",
   ADMIN:       "normal",
 };
@@ -77,13 +79,14 @@ const DEFAULT_PRIORITY: Record<NotificationType, NotificationPriority> = {
 
 const DEFAULT_EXPIRY_DAYS: Record<NotificationType, number> = {
   WATCHLIST:   14,
-  ACHIEVEMENT: 0,   // No expiry — permanent badge record
+  ACHIEVEMENT: 0,
   PRICE:       7,
   LEAGUE:      7,
   REPORT:      30,
   ADVISOR:     7,
+  REFERRAL:    30,
   SYSTEM:      3,
-  ADMIN:       0,   // Admin-configurable; defaults to no expiry
+  ADMIN:       0,
 };
 
 // ─── Validation ───────────────────────────────────────────────────────────────

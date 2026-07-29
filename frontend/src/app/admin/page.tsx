@@ -6,6 +6,112 @@ import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { AppModal, ConfirmDialog, LoadingOverlay } from "@/components/ui";
 
+// ─── Referral Reward Console (FEATURE-003) ───────────────────────────────
+
+type RewardRow = {
+  reward_id: string; referrer_name: string; referred_name: string;
+  reward_value: number; reward_type: string; status: string;
+  created_at: string; payment_reference: string; admin_notes: string;
+};
+
+function ReferralRewardConsole() {
+  const [rewards,    setRewards]    = React.useState<RewardRow[]>([]);
+  const [filter,     setFilter]     = React.useState("pending");
+  const [loading,    setLoading]    = React.useState(false);
+  const [acting,     setActing]     = React.useState<string | null>(null);
+  const [noteInput,  setNoteInput]  = React.useState<Record<string,string>>({});
+  const [payRef,     setPayRef]     = React.useState<Record<string,string>>({});
+  const [msg,        setMsg]        = React.useState("");
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    api.get(`/admin/referral-rewards?status=${filter}`)
+      .then((r: any) => setRewards(r.data.rewards || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [filter]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  async function act(reward_id: string, action: "approve" | "reject" | "mark-paid") {
+    setActing(reward_id); setMsg("");
+    try {
+      const body: any = { admin_notes: noteInput[reward_id] || "" };
+      if (action === "mark-paid") body.payment_reference = payRef[reward_id] || "";
+      await api.post(`/admin/referral-rewards/${reward_id}/${action}`, body);
+      setMsg(`✅ ${action === "approve" ? "Approved" : action === "reject" ? "Rejected" : "Marked Paid"}`);
+      load();
+    } catch (err: any) {
+      setMsg(`❌ ${err?.response?.data?.error || "Action failed."}`);
+    } finally { setActing(null); }
+  }
+
+  const STATUS_CLS: Record<string, string> = {
+    pending:  "text-yellow-400", approved: "text-court-green",
+    paid:     "text-court-green", rejected: "text-red-400",
+    suspended:"text-orange-400", reversed: "text-red-400",
+  };
+
+  return (
+    <div className="card p-5">
+      <h2 className="font-bold mb-1">🎁 Referral Reward Console</h2>
+      <p className="text-xs text-gray-500 mb-3">Review and action referral rewards. Payment is made out-of-band.</p>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["pending","approved","paid","rejected"].map((s) => (
+          <button key={s} onClick={() => setFilter(s)}
+            className={`px-3 py-1 rounded text-xs font-semibold capitalize ${filter === s ? "btn-primary" : "bg-[#1f2733] text-gray-400"}`}>
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <div className="h-16 animate-pulse bg-[#1f2733] rounded" /> :
+       rewards.length === 0 ? <p className="text-sm text-gray-400">No {filter} rewards.</p> : (
+        <div className="flex flex-col gap-4">
+          {rewards.map((r) => (
+            <div key={r.reward_id} className="bg-[#0b0f14] rounded-lg p-4 flex flex-col gap-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="text-sm font-semibold">{r.referrer_name} → {r.referred_name}</p>
+                  <p className="text-xs text-gray-500">{new Date(r.created_at).toLocaleDateString()} · LRD {r.reward_value} · {r.reward_type}</p>
+                  {r.payment_reference && <p className="text-xs text-gray-500">Ref: {r.payment_reference}</p>}
+                </div>
+                <span className={`text-xs font-bold capitalize ${STATUS_CLS[r.status] || "text-gray-400"}`}>{r.status}</span>
+              </div>
+
+              {r.status === "pending" && (
+                <div className="flex flex-col gap-2">
+                  <input className="input-field text-xs" placeholder="Admin notes (required for rejection)"
+                    value={noteInput[r.reward_id] || ""} onChange={e => setNoteInput(n => ({ ...n, [r.reward_id]: e.target.value }))} />
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => act(r.reward_id, "approve")} disabled={acting === r.reward_id}
+                      className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">✅ Approve</button>
+                    <button onClick={() => act(r.reward_id, "reject")} disabled={acting === r.reward_id || !noteInput[r.reward_id]}
+                      className="px-3 py-1.5 rounded bg-red-900/40 text-red-400 text-xs font-semibold disabled:opacity-50">❌ Reject</button>
+                  </div>
+                </div>
+              )}
+
+              {r.status === "approved" && (
+                <div className="flex flex-col gap-2">
+                  <input className="input-field text-xs" placeholder="Payment reference (required)"
+                    value={payRef[r.reward_id] || ""} onChange={e => setPayRef(p => ({ ...p, [r.reward_id]: e.target.value }))} />
+                  <input className="input-field text-xs" placeholder="Admin notes (optional)"
+                    value={noteInput[r.reward_id] || ""} onChange={e => setNoteInput(n => ({ ...n, [r.reward_id]: e.target.value }))} />
+                  <button onClick={() => act(r.reward_id, "mark-paid")} disabled={acting === r.reward_id || !payRef[r.reward_id]}
+                    className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50 w-fit">💰 Mark Paid</button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <p className="text-xs mt-3">{msg}</p>}
+    </div>
+  );
+}
+
 // ─── Team Status Management Card (FEATURE-002) ───────────────────────────
 
 type TeamRow = { team_id: string; team_name: string; status: string; division?: string };
@@ -1846,6 +1952,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* FEATURE-003: Referral Reward Console */}
+      <ReferralRewardConsole />
 
       {/* FEATURE-002: Team Status Management */}
       <TeamManagementCard />

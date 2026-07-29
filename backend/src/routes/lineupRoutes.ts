@@ -2,6 +2,7 @@ import express from "express";
 import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { AuthRequest, authenticate } from "../middleware/auth";
+import { checkReferralQualification } from "../services/referralRewardService";
 import {
   appendRow,
   getSheetData,
@@ -55,6 +56,9 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
     }
 
     res.status(201).json({ message: "Lineup submitted", lineup_id });
+
+    // FEATURE-003: fire-and-forget qualification check — never blocks submission
+    checkReferralQualification(req.user!.user_id, parsed.week_id).catch(() => {});
   } catch (err: any) {
     if (err.name === "ZodError") {
       return res.status(400).json({ error: "Invalid input", details: err.errors });

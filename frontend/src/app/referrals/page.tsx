@@ -20,6 +20,7 @@ export default function ReferralsPage() {
 
   const [code,     setCode]     = useState("");
   const [history,  setHistory]  = useState<ReferralEntry[]>([]);
+  const [earnings, setEarnings] = useState({ total_earned: 0, pending: 0 });
   const [loading,  setLoading]  = useState(true);
   const [copied,   setCopied]   = useState<"code" | "link" | null>(null);
 
@@ -29,10 +30,14 @@ export default function ReferralsPage() {
     if (!user || authLoading) return;
     Promise.all([
       api.get("/referral/my-code"),
-      api.get("/referral/my-history"),
-    ]).then(([codeRes, histRes]) => {
+      api.get("/referral/my-rewards"),
+    ]).then(([codeRes, rewardRes]) => {
       setCode(codeRes.data.referral_code);
-      setHistory(histRes.data.referrals || []);
+      setHistory(rewardRes.data.referrals || []);
+      setEarnings({
+        total_earned: rewardRes.data.total_earned || 0,
+        pending:      rewardRes.data.pending || 0,
+      });
     }).catch(() => {})
       .finally(() => setLoading(false));
   }, [user, authLoading]);
@@ -139,6 +144,20 @@ export default function ReferralsPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Earnings summary */}
+      {(earnings.total_earned > 0 || earnings.pending > 0) && (
+        <div className="card p-4 grid grid-cols-2 gap-3">
+          <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-500">Total Earned</p>
+            <p className="text-lg font-bold text-court-green">LRD {earnings.total_earned.toLocaleString()}</p>
+          </div>
+          <div className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className="text-xs text-gray-500">Pending</p>
+            <p className="text-lg font-bold text-yellow-400">LRD {earnings.pending.toLocaleString()}</p>
+          </div>
         </div>
       )}
 
