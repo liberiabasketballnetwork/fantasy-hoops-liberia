@@ -6,6 +6,93 @@ import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { AppModal, ConfirmDialog, LoadingOverlay } from "@/components/ui";
 
+// ─── Team Status Management Card (FEATURE-002) ───────────────────────────
+
+type TeamRow = { team_id: string; team_name: string; status: string; division?: string };
+
+function TeamManagementCard() {
+  const [teams,   setTeams]   = React.useState<TeamRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [saving,  setSaving]  = React.useState<string | null>(null); // team_id being saved
+  const [msg,     setMsg]     = React.useState("");
+
+  React.useEffect(() => {
+    api.get("/admin/teams")
+      .then((r: any) => setTeams(r.data.teams || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function updateStatus(team: TeamRow, newStatus: string) {
+    if (newStatus === team.status) return;
+    setSaving(team.team_id); setMsg("");
+    try {
+      await api.patch(`/admin/teams/${team.team_id}/status`, { status: newStatus });
+      setTeams((prev) =>
+        prev.map((t) => t.team_id === team.team_id ? { ...t, status: newStatus } : t)
+      );
+      setMsg(`✅ "${team.team_name}" → ${newStatus}`);
+    } catch (err: any) {
+      setMsg(`❌ Failed: ${err?.response?.data?.error || "Unknown error"}`);
+    } finally {
+      setSaving(null);
+    }
+  }
+
+  const STATUS_STYLES: Record<string, string> = {
+    Active:     "bg-court-green/15 text-court-green",
+    Eliminated: "bg-red-500/15 text-red-400",
+    Suspended:  "bg-yellow-500/15 text-yellow-400",
+  };
+
+  return (
+    <div className="card p-5">
+      <h2 className="font-bold mb-1">🏀 Team Status Management</h2>
+      <p className="text-xs text-gray-500 mb-4">
+        Eliminating a team instantly removes all its players from the draft pool.
+        No player records are modified.
+      </p>
+
+      {loading ? (
+        <div className="h-20 animate-pulse bg-[#1f2733] rounded" />
+      ) : teams.length === 0 ? (
+        <p className="text-sm text-gray-400">No teams found.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          {teams.map((team) => (
+            <div key={team.team_id} className="flex items-center justify-between gap-3 py-2 border-b border-[#1f2733] last:border-0 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_STYLES[team.status] || "bg-[#1f2733] text-gray-400"}`}>
+                  {team.status || "Unknown"}
+                </span>
+                <p className="text-sm font-medium truncate">{team.team_name}</p>
+                {team.division && <p className="text-xs text-gray-500 flex-shrink-0">{team.division}</p>}
+              </div>
+              <div className="flex gap-1.5 flex-shrink-0">
+                {["Active", "Eliminated", "Suspended"].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => updateStatus(team, s)}
+                    disabled={saving === team.team_id || team.status === s}
+                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors disabled:opacity-40 ${
+                      team.status === s
+                        ? `${STATUS_STYLES[s]} cursor-default`
+                        : "bg-[#1f2733] hover:bg-[#2a3441] text-gray-300"
+                    }`}
+                  >
+                    {saving === team.team_id && team.status !== s ? "…" : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <p className="text-xs mt-3">{msg}</p>}
+    </div>
+  );
+}
+
 // ─── Platform Settings Card (ADMIN-014) ──────────────────────────────────
 
 function PlatformSettingsCard() {
@@ -1759,6 +1846,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* FEATURE-002: Team Status Management */}
+      <TeamManagementCard />
 
       {/* ADMIN-014: Platform Settings */}
       <PlatformSettingsCard />

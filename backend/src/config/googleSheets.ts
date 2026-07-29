@@ -31,7 +31,7 @@ export const SHEET_NAMES = {
 export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.USERS]:     ["user_id","full_name","display_name","email","password_hash","phone","created_at","last_login","referral_code","referred_by","referral_date"],
   [SHEET_NAMES.REFERRALS]: ["referrer_user_id","referred_user_id","referral_code","referral_date","status"],
-  [SHEET_NAMES.TEAMS]: ["team_id","team_name","division","logo_url","created_at"],
+  [SHEET_NAMES.TEAMS]:   ["team_id","team_name","division","logo_url","status","created_at"],
   [SHEET_NAMES.PLAYERS]: ["player_id","full_name","team_id","position","fantasy_price","status","games_played","average_points","average_rebounds","average_assists","photo_url","import_alias","source","created_at"],
   [SHEET_NAMES.GAMEWEEK]: ["week_id","start_date","end_date","submission_deadline","is_locked","scores_calculated","prices_updated","created_at"],
   [SHEET_NAMES.USER_LINEUPS]: ["lineup_id","user_id","week_id","captain_player_id","total_score","submitted_at"],

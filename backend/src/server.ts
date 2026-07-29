@@ -32,7 +32,9 @@ import pushRoutes from "./routes/pushRoutes";
 import communityRoutes from "./routes/communityRoutes";
 import platformSettingsRoutes from "./routes/platformSettingsRoutes";
 import referralRoutes from "./routes/referralRoutes";
+import teamRoutes from "./routes/teamRoutes";
 import { migrateExistingUsers } from "./services/referralService";
+import { migrateTeamStatuses } from "./services/playerEligibilityService";
 // Bootstrap push destination (registers with engine at import time)
 import "./services/pushDestinationHandler";
 
@@ -77,6 +79,7 @@ app.use("/", pushRoutes);             // /push/*
 app.use("/", communityRoutes);        // /community/*
 app.use("/", platformSettingsRoutes); // /platform-settings, /admin/platform-settings
 app.use("/", referralRoutes);         // /referral/*
+app.use("/", teamRoutes);             // /teams, /admin/teams, /admin/teams/:id/status
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
@@ -87,8 +90,11 @@ app.use((err: any, _req: express.Request, res: express.Response, _next: express.
 
 app.listen(PORT, () => {
   console.log(`Fantasy Hoops Liberia API running on port ${PORT}`);
-  // GEP-002.1: assign referral codes to any existing users who lack one
   migrateExistingUsers().catch((e) =>
     console.warn("[Referral] Migration error:", e?.message)
+  );
+  // FEATURE-002: ensure all teams have explicit status
+  migrateTeamStatuses().catch((e) =>
+    console.warn("[TeamMigration] Error:", e?.message)
   );
 });

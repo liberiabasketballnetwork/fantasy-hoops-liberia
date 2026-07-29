@@ -118,11 +118,36 @@ export async function findRowByField(sheetName: string, field: string, value: st
 }
 
 export async function filterPlayers(filters: { team_id?: string; position?: string; status?: string }): Promise<Row[]> {
-  let players = await getSheetData("Players");
-  if (filters.team_id) players = players.filter((p) => p.team_id === filters.team_id);
-  if (filters.position) players = players.filter((p) => p.position === filters.position);
-  if (filters.status) players = players.filter((p) => String(p.status).toLowerCase() === filters.status!.toLowerCase());
-  return players;
+  const { buildActiveTeamSet } = await import("./playerEligibilityService");
+
+  // Load players and teams in parallel
+  const [players, activeTeamSet] = await Promise.all([
+    getSheetData("Players"),
+    buildActiveTeamSet(),
+  ]);
+
+  let result = players;
+
+  // FEATURE-002: filter by team eligibility first (team.status must be Active)
+  // This is done before the explicit status filter so admin ?status=all still
+  // respects team elimination — team status is always enforced.
+  const effectiveStatus = filters.status;
+  if (effectiveStatus !== "all") {
+    // Draft pool: apply both player status AND team status filters
+    result = result.filter((p) => {
+      const playerActive = String(p.status || "").toLowerCase() === "active";
+      const teamActive   = activeTeamSet.has(String(p.team_id || ""));
+      return playerActive && teamActive;
+    });
+  }
+  // When status=all (admin view), skip eligibility filter entirely so
+  // admins can see players from eliminated teams.
+
+  // Additional query filters (team_id, position)
+  if (filters.team_id) result = result.filter((p) => p.team_id === filters.team_id);
+  if (filters.position) result = result.filter((p) => p.position === filters.position);
+
+  return result;
 }
 
 export function sortLeaderboard(rows: Row[]): Row[] {
