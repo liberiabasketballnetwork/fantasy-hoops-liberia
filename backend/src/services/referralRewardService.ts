@@ -11,9 +11,9 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { getSheetData, appendRow, updateRow } from "./sheetsService";
-import { getSetting } from "./sheetsService";
 import { notificationEngine } from "./notificationEventEngine";
 import { PS_KEYS } from "./platformSettingsService";
+import { logAdminAction } from "./adminActionLogger";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -47,17 +47,19 @@ export interface ReferralReward {
 // ─── Setting helpers ──────────────────────────────────────────────────────
 
 async function getRewardSettings() {
-  const [enabled, amountStr, windowStr, maxStr] = await Promise.all([
-    getSetting(PS_KEYS.REFERRAL_REWARD_ENABLED,             "FALSE"),
-    getSetting(PS_KEYS.REFERRAL_REWARD_AMOUNT_LRD,          "500"),
-    getSetting(PS_KEYS.REFERRAL_QUALIFICATION_WINDOW_WEEKS, "4"),
-    getSetting(PS_KEYS.REFERRAL_MAX_REWARDS_PER_MONTH,      "10"),
-  ]);
+  // HOTFIX-003.1: read from Platform_Settings (key/value rows), not the legacy Settings sheet.
+  // getSetting() reads Settings sheet — wrong. We must query Platform_Settings directly.
+  const rows = await getSheetData("Platform_Settings").catch(() => [] as any[]);
+  const get  = (key: string, fallback: string) => {
+    const row = rows.find((r: any) => String(r.key) === key);
+    return row ? String(row.value ?? fallback) : fallback;
+  };
+
   return {
-    enabled:         enabled.toUpperCase() === "TRUE",
-    amountLrd:       Math.max(0, Number(amountStr) || 500),
-    windowWeeks:     Math.max(1, Number(windowStr) || 4),
-    maxPerMonth:     Math.max(1, Number(maxStr)    || 10),
+    enabled:     get(PS_KEYS.REFERRAL_REWARD_ENABLED,             "FALSE").toUpperCase() === "TRUE",
+    amountLrd:   Math.max(0, Number(get(PS_KEYS.REFERRAL_REWARD_AMOUNT_LRD,          "500")) || 500),
+    windowWeeks: Math.max(1, Number(get(PS_KEYS.REFERRAL_QUALIFICATION_WINDOW_WEEKS, "4"))   || 4),
+    maxPerMonth: Math.max(1, Number(get(PS_KEYS.REFERRAL_MAX_REWARDS_PER_MONTH,      "10"))  || 10),
   };
 }
 
@@ -190,7 +192,19 @@ export async function checkReferralQualification(
       }).catch(() => {});
     }
   } catch (err: any) {
-    console.error("[ReferralReward] checkReferralQualification error:", err?.message);
+    const msg = err?.message || "Unknown error";
+    console.error(
+      `[ReferralReward] checkReferralQualification FAILED — user=${referred_user_id} week=${week_id}: ${msg}`
+    );
+    // Log to Admin_Actions_Log so production failures are visible in the admin dashboard
+    logAdminAction({
+      admin_id:    "system",
+      action_type: "REFERRAL_QUALIFICATION_ERROR",
+      entity_type: "REFERRAL",
+      entity_id:   referred_user_id,
+      details:     `Qualification check failed for user ${referred_user_id} (week ${week_id}): ${msg}`,
+      status:      "failure",
+    }).catch(() => { /* log failure must never propagate */ });
   }
 }
 

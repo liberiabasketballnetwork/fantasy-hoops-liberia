@@ -57,8 +57,12 @@ router.post("/submit-lineup", authenticate, async (req: AuthRequest, res) => {
 
     res.status(201).json({ message: "Lineup submitted", lineup_id });
 
-    // FEATURE-003: fire-and-forget qualification check — never blocks submission
-    checkReferralQualification(req.user!.user_id, parsed.week_id).catch(() => {});
+    // HOTFIX-003.1: fire-and-forget qualification check with structured error logging
+    checkReferralQualification(req.user!.user_id, parsed.week_id).catch((err: any) => {
+      console.error(
+        `[ReferralReward] Qualification hook threw unexpectedly — user=${req.user!.user_id} week=${parsed.week_id}: ${err?.message}`
+      );
+    });
   } catch (err: any) {
     if (err.name === "ZodError") {
       return res.status(400).json({ error: "Invalid input", details: err.errors });
