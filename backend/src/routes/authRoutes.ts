@@ -105,13 +105,53 @@ router.post("/login", async (req, res) => {
     if (!user) return res.status(401).json({ error: "Invalid phone number or password" });
     const valid = await bcrypt.compare(parsed.password, user.password_hash);
     if (!valid) return res.status(401).json({ error: "Invalid phone number or password" });
+
+    // FEATURE-004: check if temp password has expired
+    const isTempPassword = String(user.password_temporary || "").toUpperCase() === "TRUE";
+    const tempExpiry = user.temp_password_expires_at ? new Date(user.temp_password_expires_at) : null;
+    const tempExpired = isTempPassword && tempExpiry && tempExpiry < new Date();
+    if (tempExpired) {
+      return res.status(401).json({
+        error: "Your temporary password has expired. Please submit a new password reset request.",
+        code:  "TEMP_PASSWORD_EXPIRED",
+      });
+    }
+
     await updateRow("Users", "user_id", user.user_id, { last_login: new Date().toISOString() });
     const token = jwt.sign({ user_id: user.user_id, phone: normalizedLoginPhone, isAdmin: false }, process.env.JWT_SECRET as string, { expiresIn: process.env.JWT_EXPIRES_IN as any || "7d" });
-    res.json({ token, user: { user_id: user.user_id, full_name: user.full_name, display_name: user.display_name || "", phone: normalizedLoginPhone, email: user.email } });
+    res.json({
+      token,
+      user: { user_id: user.user_id, full_name: user.full_name, display_name: user.display_name || "", phone: normalizedLoginPhone, email: user.email },
+      // FEATURE-004: signal frontend to redirect to mandatory password change
+      must_change_password: isTempPassword && !tempExpired,
+    });
   } catch (err: any) {
     if (err.name === "ZodError") return res.status(400).json({ error: "Invalid input", details: err.errors });
     res.status(500).json({ error: "Login failed" });
   }
+});
+
+// FEATURE-004: set-password — clears password_temporary flag after forced change
+router.post("/set-password", authenticate, async (req: AuthRequest, res) => {
+  try {
+    const { new_password } = req.body;
+    if (!new_password || String(new_password).length < 6)
+      return res.status(400).json({ error: "Password must be at least 6 characters." });
+
+    const allUsers = await getSheetData("Users");
+    const user = allUsers.find((u) => u.user_id === req.user!.user_id);
+    if (!user) return res.status(404).json({ error: "User not found." });
+
+    const password_hash = await bcrypt.hash(new_password, 10);
+    await updateRow("Users", "user_id", req.user!.user_id, {
+      ...user,
+      password_hash,
+      password_temporary:       "FALSE",
+      temp_password_expires_at: "",
+    });
+
+    res.json({ message: "Password updated successfully." });
+  } catch { res.status(500).json({ error: "Failed to set password." }); }
 });
 
 router.post("/logout", (_req, res) => res.json({ message: "Logged out" }));

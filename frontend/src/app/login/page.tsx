@@ -25,7 +25,10 @@ export default function LoginPage() {
     try {
       const res = await api.post("/login", data);
       login(res.data.token, res.data.user);
-      if (res.data.user.isAdmin) {
+      // FEATURE-004: redirect to forced change page if temp password
+      if (res.data.must_change_password) {
+        router.push("/change-password");
+      } else if (res.data.user.isAdmin) {
         router.push("/admin");
       } else if (!res.data.user.display_name) {
         router.push("/choose-display-name");
@@ -95,6 +98,13 @@ export default function LoginPage() {
       </div>
 
       <p className="text-sm text-gray-400 mt-4">
+        Forgot your password?{" "}
+        <Link href="/forgot-password" className="text-court-orange">
+          Reset password
+        </Link>
+      </p>
+
+      <p className="text-sm text-gray-400">
         No account yet?{" "}
         <Link href="/register" className="text-court-orange">
           Register free

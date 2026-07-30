@@ -24,6 +24,10 @@ export const PS_KEYS = {
   REFERRAL_REWARD_AMOUNT_LRD:          "ReferralRewardAmountLrd",
   REFERRAL_QUALIFICATION_WINDOW_WEEKS: "ReferralQualificationWindowWeeks",
   REFERRAL_MAX_REWARDS_PER_MONTH:      "ReferralMaxRewardsPerMonth",
+  // FEATURE-004: Password Reset Request Queue
+  PASSWORD_RESET_MAX_PER_DAY:       "PasswordResetMaxRequestsPerDay",
+  PASSWORD_RESET_EXPIRY_HOURS:      "PasswordResetRequestExpiryHours",
+  TEMP_PASSWORD_EXPIRY_HOURS:       "TemporaryPasswordExpiryHours",
 } as const;
 
 // ─── Defaults (used when sheet row is missing) ────────────────────────────
@@ -42,6 +46,10 @@ const DEFAULTS: Record<string, string> = {
   [PS_KEYS.REFERRAL_REWARD_AMOUNT_LRD]:        "500",
   [PS_KEYS.REFERRAL_QUALIFICATION_WINDOW_WEEKS]: "4",
   [PS_KEYS.REFERRAL_MAX_REWARDS_PER_MONTH]:    "10",
+  // FEATURE-004
+  [PS_KEYS.PASSWORD_RESET_MAX_PER_DAY]:   "3",
+  [PS_KEYS.PASSWORD_RESET_EXPIRY_HOURS]:  "48",
+  [PS_KEYS.TEMP_PASSWORD_EXPIRY_HOURS]:   "24",
 };
 
 // ─── Types ────────────────────────────────────────────────────────────────

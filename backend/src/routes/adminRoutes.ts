@@ -307,10 +307,17 @@ router.post("/users/:id/reset-password", async (req: AuthRequest, res) => {
     const user = allUsers.find((u) => u.user_id === req.params.id);
     if (!user) return res.status(404).json({ error: "User not found" });
     const CHARSET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
-    const randomBytes = crypto.randomBytes(12);
-    const tempPassword = Array.from(randomBytes).map((b) => CHARSET[(b as number) % CHARSET.length]).join("");
+    const randomBytes = crypto.randomBytes(6);
+    const body = Array.from(randomBytes).map((b) => CHARSET[(b as number) % CHARSET.length]).join("");
+    const tempPassword  = `FHL-${body}`;
     const password_hash = await bcrypt.hash(tempPassword, 10);
-    await updateRow("Users", "user_id", req.params.id, { password_hash });
+    // FEATURE-004: mark as temporary with 24h expiry
+    const tempExpiry = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await updateRow("Users", "user_id", req.params.id, {
+      password_hash,
+      password_temporary:       "TRUE",
+      temp_password_expires_at: tempExpiry,
+    });
     await logAdminAction({ admin_id: req.user?.user_id || "admin", action_type: "RESET_PASSWORD", entity_type: "USER", entity_id: req.params.id, details: `Password reset for user ${user.display_name || user.full_name}`, status: "success" });
     res.json({ message: "Password reset successfully.", temp_password: tempPassword });
   } catch (err) { res.status(500).json({ error: "Failed to reset password" }); }

@@ -6,6 +6,124 @@ import { api } from "@/lib/api";
 import { useRequireAdmin } from "@/hooks/useRequireAdmin";
 import { AppModal, ConfirmDialog, LoadingOverlay } from "@/components/ui";
 
+// ─── Password Reset Requests Card (FEATURE-004) ───────────────────────────
+
+type ResetRequestRow = {
+  request_id: string; request_reference: string; display_name: string | null;
+  phone_masked: string; phone_full: string; status: string;
+  time_ago: string; last_login: string | null; admin_notes: string;
+};
+
+function PasswordResetRequestsCard() {
+  const [requests, setRequests] = React.useState<ResetRequestRow[]>([]);
+  const [filter,   setFilter]   = React.useState("pending");
+  const [loading,  setLoading]  = React.useState(false);
+  const [acting,   setActing]   = React.useState<string | null>(null);
+  const [notes,    setNotes]    = React.useState<Record<string,string>>({});
+  const [tempPws,  setTempPws]  = React.useState<Record<string,string>>({});
+  const [msg,      setMsg]      = React.useState("");
+
+  const load = React.useCallback(() => {
+    setLoading(true);
+    api.get(`/admin/reset-requests?status=${filter}`)
+      .then((r: any) => setRequests(r.data.requests || []))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [filter]);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  async function complete(req: ResetRequestRow) {
+    setActing(req.request_id); setMsg("");
+    try {
+      const res = await api.post(`/admin/reset-requests/${req.request_id}/complete`, {});
+      setTempPws((t) => ({ ...t, [req.request_id]: res.data.temp_password }));
+      setMsg(`✅ ${req.request_reference} — temp password issued. Send via WhatsApp.`);
+      load();
+    } catch (err: any) {
+      setMsg(`❌ ${err?.response?.data?.error || "Reset failed."}`);
+    } finally { setActing(null); }
+  }
+
+  async function reject(req: ResetRequestRow) {
+    if (!notes[req.request_id]?.trim()) { setMsg("❌ Notes required for rejection."); return; }
+    setActing(req.request_id); setMsg("");
+    try {
+      await api.post(`/admin/reset-requests/${req.request_id}/reject`, { admin_notes: notes[req.request_id] });
+      setMsg(`✅ ${req.request_reference} rejected.`);
+      load();
+    } catch (err: any) {
+      setMsg(`❌ ${err?.response?.data?.error || "Rejection failed."}`);
+    } finally { setActing(null); }
+  }
+
+  const STATUS_CLS: Record<string, string> = {
+    pending: "text-yellow-400", completed: "text-court-green",
+    rejected: "text-red-400",  expired: "text-gray-500",
+  };
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center gap-2 mb-1 flex-wrap">
+        <h2 className="font-bold">🔐 Password Reset Requests</h2>
+      </div>
+      <p className="text-xs text-gray-500 mb-3">Review requests, generate temporary passwords, and deliver via WhatsApp.</p>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["pending","completed","rejected","all"].map((s) => (
+          <button key={s} onClick={() => setFilter(s)}
+            className={`px-3 py-1 rounded text-xs font-semibold capitalize ${filter === s ? "btn-primary" : "bg-[#1f2733] text-gray-400"}`}>
+            {s}
+          </button>
+        ))}
+      </div>
+      {loading ? <div className="h-16 animate-pulse bg-[#1f2733] rounded" /> :
+       requests.length === 0 ? <p className="text-sm text-gray-400">No {filter === "all" ? "" : filter} requests.</p> : (
+        <div className="flex flex-col gap-4">
+          {requests.map((r) => (
+            <div key={r.request_id} className="bg-[#0b0f14] rounded-lg p-4 flex flex-col gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <p className="text-sm font-bold text-court-orange">{r.request_reference}</p>
+                    <span className={`text-xs font-semibold capitalize ${STATUS_CLS[r.status] || "text-gray-400"}`}>{r.status}</span>
+                  </div>
+                  <p className="text-sm font-medium mt-0.5">{r.display_name || "Unknown Manager"}</p>
+                  <p className="text-xs text-gray-500 font-mono">{r.phone_masked} · {r.time_ago}</p>
+                  {r.last_login && <p className="text-xs text-gray-600">Last login: {new Date(r.last_login).toLocaleDateString()}</p>}
+                </div>
+              </div>
+              {tempPws[r.request_id] && (
+                <div className="rounded bg-court-green/10 border border-court-green/30 p-3 flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs text-gray-500 mb-0.5">Temporary Password — shown once</p>
+                    <p className="text-xl font-bold text-court-green tracking-widest">{tempPws[r.request_id]}</p>
+                  </div>
+                  <button onClick={() => navigator.clipboard?.writeText(tempPws[r.request_id])}
+                    className="px-2.5 py-1 rounded bg-[#1f2733] text-xs font-semibold flex-shrink-0">Copy</button>
+                </div>
+              )}
+              {r.status === "pending" && !tempPws[r.request_id] && (
+                <div className="flex flex-col gap-2">
+                  <input className="input-field text-xs" placeholder="Admin notes (required for rejection)"
+                    value={notes[r.request_id] || ""} onChange={e => setNotes(n => ({ ...n, [r.request_id]: e.target.value }))} />
+                  <div className="flex gap-2 flex-wrap">
+                    <button onClick={() => complete(r)} disabled={acting === r.request_id}
+                      className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">🔑 Reset Password</button>
+                    <button onClick={() => reject(r)} disabled={acting === r.request_id || !notes[r.request_id]?.trim()}
+                      className="px-3 py-1.5 rounded bg-red-900/40 text-red-400 text-xs font-semibold disabled:opacity-50">❌ Reject</button>
+                  </div>
+                </div>
+              )}
+              {r.admin_notes && <p className="text-xs text-gray-600 italic">Note: {r.admin_notes}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+      {msg && <p className="text-xs mt-3">{msg}</p>}
+    </div>
+  );
+}
+
 // ─── Referral Reward Console (FEATURE-003) ───────────────────────────────
 
 type RewardRow = {
@@ -1952,6 +2070,9 @@ export default function AdminPage() {
           )}
         </div>
       )}
+
+      {/* FEATURE-004: Password Reset Requests */}
+      <PasswordResetRequestsCard />
 
       {/* FEATURE-003: Referral Reward Console */}
       <ReferralRewardConsole />

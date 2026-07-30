@@ -2,8 +2,9 @@ export const SPREADSHEET_ID = process.env.GOOGLE_SHEET_ID || "";
 
 export const SHEET_NAMES = {
   USERS: "Users",
-  REFERRALS:        "Referrals",
-  REFERRAL_REWARDS: "Referral_Rewards",
+  REFERRALS:               "Referrals",
+  REFERRAL_REWARDS:        "Referral_Rewards",
+  PASSWORD_RESET_REQUESTS: "Password_Reset_Requests",
   TEAMS: "Teams",
   PLAYERS: "Players",
   GAMEWEEK: "Weekly_Gameweek",
@@ -30,9 +31,10 @@ export const SHEET_NAMES = {
 } as const;
 
 export const SHEET_HEADERS: Record<string, string[]> = {
-  [SHEET_NAMES.USERS]:     ["user_id","full_name","display_name","email","password_hash","phone","created_at","last_login","referral_code","referred_by","referral_date"],
+  [SHEET_NAMES.USERS]:     ["user_id","full_name","display_name","email","password_hash","phone","created_at","last_login","referral_code","referred_by","referral_date","password_temporary","temp_password_expires_at"],
   [SHEET_NAMES.REFERRALS]:        ["referrer_user_id","referred_user_id","referral_code","referral_date","status","qualified_at"],
   [SHEET_NAMES.REFERRAL_REWARDS]: ["reward_id","referral_id","referrer_user_id","referred_user_id","reward_type","reward_value","status","created_at","reviewed_at","paid_at","admin_id","payment_reference","admin_notes"],
+  [SHEET_NAMES.PASSWORD_RESET_REQUESTS]: ["request_id","request_reference","user_id","phone","status","requested_at","actioned_at","actioned_by","admin_notes","expires_at"],
   [SHEET_NAMES.TEAMS]:   ["team_id","team_name","division","logo_url","status","created_at"],
   [SHEET_NAMES.PLAYERS]: ["player_id","full_name","team_id","position","fantasy_price","status","games_played","average_points","average_rebounds","average_assists","photo_url","import_alias","source","created_at"],
   [SHEET_NAMES.GAMEWEEK]: ["week_id","start_date","end_date","submission_deadline","is_locked","scores_calculated","prices_updated","created_at"],
