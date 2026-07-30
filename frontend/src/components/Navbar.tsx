@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthContext";
+import { api } from "@/lib/api";
 
 // ─── Navigation config ────────────────────────────────────────────────────────
 // Single source of truth — every dropdown section defined once.
@@ -248,8 +249,22 @@ function MobileSection({
 export default function Navbar() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [mobileOpen,   setMobileOpen]   = useState(false);
+  const [unreadCount,  setUnreadCount]  = useState(0);
   const mobileRef = useRef<HTMLDivElement>(null);
+
+  // Poll unread notification count when logged in
+  useEffect(() => {
+    if (!user) { setUnreadCount(0); return; }
+    const fetchCount = () => {
+      api.get("/notifications/count")
+        .then((r) => setUnreadCount(r.data.unread_count ?? 0))
+        .catch(() => {});
+    };
+    fetchCount();
+    const interval = setInterval(fetchCount, 60_000);
+    return () => clearInterval(interval);
+  }, [user]);
 
   const activeGrp = activeGroupId(pathname);
   const isDashboard = pathname === "/dashboard" || pathname === "/";
@@ -306,6 +321,19 @@ export default function Navbar() {
           {/* Auth */}
           {user ? (
             <div className="flex items-center gap-3 ml-2">
+              {/* Notification bell */}
+              <Link
+                href="/notifications"
+                className="relative flex items-center justify-center w-8 h-8 rounded-full hover:bg-[#1f2733] transition-colors"
+                aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
+              >
+                <span className="text-lg">🔔</span>
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 px-1 rounded-full bg-court-orange text-white text-[10px] font-bold flex items-center justify-center leading-none">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
               <Link
                 href="/profile"
                 className={`text-sm hover:text-court-orange transition-colors ${pathname === "/profile" ? "text-court-orange" : "text-gray-400"}`}
@@ -373,6 +401,18 @@ export default function Navbar() {
           <div className="pt-3 border-t border-[#1f2733] flex flex-col gap-2">
             {user ? (
               <>
+                <Link
+                  href="/notifications"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-sm text-gray-400 hover:text-white flex items-center gap-2"
+                >
+                  🔔 Notifications
+                  {unreadCount > 0 && (
+                    <span className="min-w-[18px] h-4 px-1 rounded-full bg-court-orange text-white text-[10px] font-bold flex items-center justify-center">
+                      {unreadCount > 99 ? "99+" : unreadCount}
+                    </span>
+                  )}
+                </Link>
                 <Link href="/profile" onClick={() => setMobileOpen(false)} className="text-sm text-gray-400 hover:text-white">
                   👤 {user.display_name || user.full_name?.split(" ")[0] || "Profile"}
                 </Link>
