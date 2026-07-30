@@ -21,6 +21,7 @@ export interface BadgeDefinition {
   icon: string;
   requirement: string;   // human-readable unlock condition
   repeatable: boolean;   // if true, can be earned multiple weeks
+  coming_soon?: boolean; // if true, not yet evaluatable — shown as preview only
 }
 
 export const BADGE_CATALOG: BadgeDefinition[] = [
@@ -71,6 +72,7 @@ export const BADGE_CATALOG: BadgeDefinition[] = [
     icon: "🤖",
     requirement: "Use the Team Optimizer's recommendation and improve your weekly fantasy score.",
     repeatable: true,
+    coming_soon: true,  // AUDIT-001: evaluation not yet implemented — optimizer usage not tracked
   },
   {
     key: "LEAGUE_CHAMPION",
@@ -106,6 +108,7 @@ export interface AchievementWithBadge extends Achievement {
 export interface AchievementsResponse {
   earned: AchievementWithBadge[];
   locked: (BadgeDefinition & { next_milestone?: string })[];
+  coming_soon: BadgeDefinition[];
   total_earned: number;
 }
 
@@ -280,17 +283,35 @@ export async function evaluateAchievements(week_id: string): Promise<{
     }
 
     // ── BUDGET_MASTER ────────────────────────────────────────────────────────
+    // AUDIT-001 fixes:
+    //   1. Read budget cap from Settings sheet (not hardcoded 100)
+    //   2. Use Price_History.old_price for submission-time player prices,
+    //      not the current Players.fantasy_price (which reflects post-update prices)
     if (rank <= 20 && lineup) {
       const lineupPlayers = allLineupPlayers.filter((lp) => lp.lineup_id === lineup.lineup_id);
-      const playerIds = lineupPlayers.map((lp) => lp.player_id);
+      const playerIds     = lineupPlayers.map((lp) => lp.player_id);
+
+      // Submission-time price: use old_price from this week's Price_History.
+      // If a player has no Price_History row (price unchanged), fall back to
+      // their current fantasy_price — an unchanged price is the same at both
+      // submission time and evaluation time.
       const totalPrice = playerIds.reduce((sum, pid) => {
-        const p = allPlayers.find((pl) => pl.player_id === pid);
-        return sum + Number(p?.fantasy_price || 0);
+        const historyRow = allPriceHistory.find(
+          (r) => String(r.player_id) === String(pid) && String(r.week_id) === String(week_id)
+        );
+        const submissionPrice = historyRow
+          ? Number(historyRow.old_price || 0)        // price at submission time
+          : Number(allPlayers.find((pl) => pl.player_id === pid)?.fantasy_price || 0); // unchanged
+        return sum + submissionPrice;
       }, 0);
-      // Budget cap from settings default 100; use 100 as fallback
-      const creditsRemaining = 100 - totalPrice;
+
+      // Budget cap from Settings sheet (AUDIT-001: was hardcoded 100)
+      const budgetCapStr    = await getSetting("budget_cap", "100");
+      const budgetCap       = Math.max(1, Number(budgetCapStr) || 100);
+      const creditsRemaining = budgetCap - totalPrice;
+
       if (creditsRemaining >= 5) {
-        const a = await award(uid, "BUDGET_MASTER", week_id, `Rank ${rank}, ${creditsRemaining} credits unused`, existingAchievements);
+        const a = await award(uid, "BUDGET_MASTER", week_id, `Rank ${rank}, ${creditsRemaining.toFixed(1)} credits unused (cap ${budgetCap})`, existingAchievements);
         if (a) { awarded.push(a); existingAchievements.push(a); }
       }
     }
@@ -358,11 +379,13 @@ export async function getUserAchievements(user_id: string): Promise<Achievements
       };
     });
 
-  const locked = BADGE_CATALOG.filter((b) => !earnedKeys.has(b.key));
+  const locked      = BADGE_CATALOG.filter((b) => !earnedKeys.has(b.key) && !b.coming_soon);
+  const coming_soon = BADGE_CATALOG.filter((b) => b.coming_soon);
 
   return {
     earned: earnedWithBadge,
     locked,
+    coming_soon,
     total_earned: earned.length,
   };
 }

@@ -27,8 +27,9 @@ interface BadgeDef {
 }
 
 interface AchievementsData {
-  earned: AchievementWithBadge[];
-  locked: BadgeDef[];
+  earned:      AchievementWithBadge[];
+  locked:      BadgeDef[];
+  coming_soon: BadgeDef[];
   total_earned: number;
 }
 
@@ -113,6 +114,27 @@ export default function AchievementsPage() {
                 <div>
                   <p className="font-bold text-gray-400">{b.name}</p>
                   <p className="text-xs text-gray-500 mt-0.5">{b.requirement}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Coming Soon badges — AUDIT-001: not yet evaluatable, shown as preview */}
+      {data.coming_soon?.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="font-bold text-sm uppercase text-gray-400">🚀 Coming Soon</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {data.coming_soon.map((b) => (
+              <div key={b.key} className="card p-4 flex items-start gap-4 opacity-40 border border-dashed border-[#2a3441]">
+                <span className="text-3xl flex-shrink-0 grayscale">{b.icon}</span>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <p className="font-bold text-gray-500">{b.name}</p>
+                    <span className="text-[10px] bg-[#1f2733] text-gray-600 px-1.5 py-0.5 rounded">Preview</span>
+                  </div>
+                  <p className="text-xs text-gray-600 mt-0.5">{b.requirement}</p>
                 </div>
               </div>
             ))}

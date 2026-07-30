@@ -1537,10 +1537,15 @@ export default function AdminPage() {
                     <button onClick={() => updatePlayerPrices(w.week_id)} disabled={updatingPrices} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50">
                       {updatingPrices ? "Updating..." : "💰 Update Prices"}
                     </button>
-                    <button onClick={async () => { try { const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`); setMessage(`✅ ${res.data.message}`); } catch (err: any) { setMessage(err?.response?.data?.error || "Failed to evaluate achievements."); }}} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold">
+                    <button
+                      onClick={async () => { try { const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`); setMessage(`✅ ${res.data.message}`); } catch (err: any) { setMessage(err?.response?.data?.error || "Failed to evaluate achievements."); }}}
+                      disabled={!pricesUpd}
+                      title={!pricesUpd ? "Run Update Prices first - badge evaluation depends on price history" : ""}
+                      className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
                       🏅 Evaluate Badges
                     </button>
-                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">📋 View Report</a>
+                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">View Report</a>
                   </div>
                 </div>
               )}
@@ -1560,10 +1565,15 @@ export default function AdminPage() {
                     <button onClick={() => updatePlayerPrices(w.week_id)} disabled={updatingPrices || pricesUpd} title={pricesUpd ? "Already updated" : ""} className="px-3 py-1.5 rounded bg-blue-600 hover:bg-blue-500 text-xs font-semibold disabled:opacity-50">
                       {updatingPrices ? "Updating..." : pricesUpd ? "💰 Prices Done ✓" : "💰 Update Prices"}
                     </button>
-                    <button onClick={async () => { try { const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`); setMessage(`✅ ${res.data.message}`); } catch (err: any) { setMessage(err?.response?.data?.error || "Failed to evaluate achievements."); }}} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold">
+                    <button
+                      onClick={async () => { try { const res = await api.post(`/admin/achievements/evaluate/${w.week_id}`); setMessage(`✅ ${res.data.message}`); } catch (err: any) { setMessage(err?.response?.data?.error || "Failed to evaluate achievements."); }}}
+                      disabled={!pricesUpd}
+                      title={!pricesUpd ? "Run Update Prices first - badge evaluation depends on price history" : ""}
+                      className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
                       🏅 Evaluate Badges
                     </button>
-                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">📋 View Report</a>
+                    <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block">View Report</a>
                   </div>
                 </div>
               )}
