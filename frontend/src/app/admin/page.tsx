@@ -317,6 +317,159 @@ function TeamManagementCard() {
   );
 }
 
+// ─── Retention Recommendations Card (GROWTH-003) ─────────────────────────
+
+type RecRow = {
+  recommendation_id: string; recommendation_type: string; title: string;
+  description: string; audience_type: string; recommended_subject: string;
+  recommended_message: string; status: string; campaign_id: string;
+  created_at: string;
+};
+
+const REC_ICONS: Record<string, string> = {
+  DRAFT_REMINDER:          "⏰",
+  RETURNING_MANAGER:       "🔄",
+  FIRST_TIME_SUCCESS:      "🌟",
+  LEADERBOARD_PUSH:        "🏆",
+  REFERRAL_MOMENTUM:       "🤝",
+  ACHIEVEMENT_CELEBRATION: "🏅",
+};
+
+function RetentionRecommendationsCard() {
+  const [recs,      setRecs]      = React.useState<RecRow[]>([]);
+  const [loading,   setLoading]   = React.useState(false);
+  const [generating,setGenerating]= React.useState(false);
+  const [acting,    setActing]    = React.useState<string | null>(null);
+  const [filter,    setFilter]    = React.useState("pending");
+  const [msg,       setMsg]       = React.useState("");
+
+  async function load() {
+    setLoading(true);
+    try {
+      const res = await api.get(`/admin/retention/recommendations?status=${filter}`);
+      setRecs(res.data.recommendations || []);
+    } catch { /* non-fatal */ }
+    finally { setLoading(false); }
+  }
+
+  React.useEffect(() => { load(); }, [filter]);
+
+  async function generate() {
+    setGenerating(true); setMsg("");
+    try {
+      const res = await api.post("/admin/retention/generate");
+      setMsg(`Generated ${res.data.generated} new recommendation${res.data.generated !== 1 ? "s" : ""}.`);
+      load();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Generation failed.");
+    } finally { setGenerating(false); }
+  }
+
+  async function convert(id: string) {
+    setActing(id); setMsg("");
+    try {
+      const res = await api.post(`/admin/retention/${id}/convert`);
+      setMsg(`Campaign draft created: ${res.data.campaign_id.slice(0, 8)}... Open Campaign Manager to preview and send.`);
+      load();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Conversion failed.");
+    } finally { setActing(null); }
+  }
+
+  async function dismiss(id: string) {
+    setActing(id); setMsg("");
+    try {
+      await api.post(`/admin/retention/${id}/dismiss`);
+      load();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Dismiss failed.");
+    } finally { setActing(null); }
+  }
+
+  const STATUS_CLS: Record<string, string> = {
+    pending:   "text-yellow-400", converted: "text-court-green",
+    dismissed: "text-gray-500",   expired:   "text-gray-600",
+  };
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h2 className="font-bold">🧠 Retention Recommendations</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Platform-generated engagement opportunities. Admin approval required before any message is sent.</p>
+        </div>
+        <button onClick={generate} disabled={generating}
+          className="px-3 py-1.5 rounded bg-court-orange text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50">
+          {generating ? "Analysing..." : "Analyse & Generate"}
+        </button>
+      </div>
+
+      <div className="flex flex-wrap gap-2 mb-4">
+        {["pending","converted","dismissed","all"].map((s) => (
+          <button key={s} onClick={() => setFilter(s)}
+            className={`px-3 py-1 rounded text-xs font-semibold capitalize ${filter === s ? "btn-primary" : "bg-[#1f2733] text-gray-400"}`}>
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {loading ? <div className="h-16 animate-pulse bg-[#1f2733] rounded" /> :
+       recs.length === 0 ? (
+        <div className="text-center py-8 text-sm text-gray-500 border border-dashed border-[#1f2733] rounded-lg">
+          {filter === "pending"
+            ? <>No pending recommendations. Click <strong>Analyse & Generate</strong> to identify engagement opportunities.</>
+            : `No ${filter} recommendations.`}
+        </div>
+       ) : (
+        <div className="flex flex-col gap-3">
+          {recs.map((r) => (
+            <div key={r.recommendation_id} className="bg-[#0b0f14] rounded-lg p-4 flex flex-col gap-3">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <div className="flex items-start gap-2">
+                  <span className="text-xl flex-shrink-0">{REC_ICONS[r.recommendation_type] || "💡"}</span>
+                  <div>
+                    <p className="text-sm font-semibold">{r.title}</p>
+                    <p className="text-xs text-gray-400 mt-0.5">{r.description}</p>
+                  </div>
+                </div>
+                <span className={`text-xs font-semibold capitalize flex-shrink-0 ${STATUS_CLS[r.status] || "text-gray-400"}`}>{r.status}</span>
+              </div>
+
+              {/* Recommended message preview */}
+              <div className="bg-[#1f2733] rounded p-3 text-xs">
+                <p className="text-gray-500 mb-1">Recommended message:</p>
+                <p className="font-medium text-gray-200 mb-0.5">{r.recommended_subject}</p>
+                <p className="text-gray-400">{r.recommended_message}</p>
+              </div>
+
+              <div className="flex items-center gap-2 flex-wrap">
+                {r.status === "pending" && (
+                  <>
+                    <button onClick={() => convert(r.recommendation_id)} disabled={acting === r.recommendation_id}
+                      className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">
+                      {acting === r.recommendation_id ? "Converting..." : "Convert to Campaign"}
+                    </button>
+                    <button onClick={() => dismiss(r.recommendation_id)} disabled={acting === r.recommendation_id}
+                      className="px-3 py-1.5 rounded bg-[#1f2733] text-xs font-semibold text-gray-400 hover:text-gray-200 disabled:opacity-50">
+                      Dismiss
+                    </button>
+                  </>
+                )}
+                {r.status === "converted" && r.campaign_id && (
+                  <p className="text-xs text-court-green">Campaign created — find it in Campaign Manager to preview and send.</p>
+                )}
+                <span className="text-xs text-gray-600 ml-auto">{new Date(r.created_at).toLocaleDateString()}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+       )}
+
+      {msg && <p className="text-xs mt-3 text-gray-300">{msg}</p>}
+    </div>
+  );
+}
+
 // ─── Campaign Manager Card (GROWTH-002) ──────────────────────────────────
 
 const AUDIENCE_LABELS: Record<string, string> = {
@@ -641,7 +794,8 @@ function GrowthAnalyticsCard() {
   const [error,     setError]     = React.useState("");
   const [sections,  setSections]  = React.useState<Record<string,boolean>>({
     growth: true, funnel: true, engagement: true,
-    referrals: true, achievements: true, notifications: true, sponsor: true,
+    referrals: true, achievements: true, notifications: true,
+    campaigns: true, retention: true, sponsor: true,
   });
 
   function toggle(key: string) {
@@ -872,7 +1026,30 @@ function GrowthAnalyticsCard() {
             )}
           </Section>
 
-          {/* 7. Sponsor Summary */}
+          {/* 7. Campaign Analytics */}
+          {a.campaigns && (
+            <Section id="campaigns" title="📣 Campaign Analytics">
+              <MetricGrid items={[
+                { label: "Campaigns Created", value: a.campaigns.totalCreated },
+                { label: "Campaigns Sent",    value: a.campaigns.totalSent },
+                { label: "Total Recipients",  value: a.campaigns.totalRecipients },
+              ]} />
+            </Section>
+          )}
+
+          {/* 8. Retention Analytics */}
+          {a.retention && (
+            <Section id="retention" title="🧠 Retention Recommendations">
+              <MetricGrid items={[
+                { label: "Total Generated",  value: a.retention.totalRecommendations },
+                { label: "Pending",          value: a.retention.pending,   color: "text-yellow-400" },
+                { label: "Converted",        value: a.retention.converted, color: "text-court-green" },
+                { label: "Conversion Rate",  value: `${a.retention.conversionRate}%`, color: a.retention.conversionRate >= 50 ? "text-court-green" : "text-yellow-400" },
+              ]} />
+            </Section>
+          )}
+
+          {/* 9. Sponsor Summary */}
           <Section id="sponsor" title="🤝 Sponsor Summary">
             <div className="bg-[#0b0f14] rounded-lg p-4 border border-[#2a3441]">
               <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Fantasy Hoops Liberia — Community Metrics</p>
@@ -2688,6 +2865,9 @@ export default function AdminPage() {
 
       {/* FEATURE-002: Team Status Management */}
       <TeamManagementCard />
+
+      {/* GROWTH-003: Retention Recommendations */}
+      <RetentionRecommendationsCard />
 
       {/* GROWTH-002: Campaign Manager */}
       <CampaignManagerCard />

@@ -22,6 +22,23 @@ export interface PlatformAnalytics {
   achievements:     AchievementMetrics;
   notifications:    NotificationMetrics;
   sponsor:          SponsorMetrics;
+  campaigns:        CampaignAnalyticsMetrics;
+  retention:        RetentionAnalyticsMetrics;
+}
+
+interface CampaignAnalyticsMetrics {
+  totalCreated:     number;
+  totalSent:        number;
+  totalRecipients:  number;
+  byAudience:       Record<string, number>;
+}
+
+interface RetentionAnalyticsMetrics {
+  totalRecommendations: number;
+  pending:              number;
+  converted:            number;
+  dismissed:            number;
+  conversionRate:       number;
 }
 
 interface GrowthMetrics {
@@ -123,6 +140,7 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
   const [
     users, lineups, weeks, leaderboard, referrals, rewards,
     achievements, notifications, lineupPlayers, platformSettings,
+    campaigns, retentionRecs,
   ] = await Promise.all([
     getSheetData("Users"),
     getSheetData("User_Lineups"),
@@ -134,6 +152,8 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     getSheetData("Notifications"),
     getSheetData("Lineup_Players"),
     getSheetData("Platform_Settings"),
+    getSheetData("Campaigns").catch(() => []),
+    getSheetData("Retention_Recommendations").catch(() => []),
   ]);
 
   // ── Community Growth ─────────────────────────────────────────────────
@@ -314,6 +334,38 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     prizeMoneyAwarded,
   };
 
+  // ── Campaign Analytics ───────────────────────────────────────────────
+
+  const sentCampaigns   = campaigns.filter((c) => c.status === "sent");
+  const totalRecipients = sentCampaigns.reduce((s, c) => s + Number(c.recipient_count || 0), 0);
+  const campaignsByAudience: Record<string, number> = {};
+  for (const c of campaigns) {
+    campaignsByAudience[c.audience_type] = (campaignsByAudience[c.audience_type] || 0) + 1;
+  }
+
+  const campaignAnalytics: CampaignAnalyticsMetrics = {
+    totalCreated:    campaigns.length,
+    totalSent:       sentCampaigns.length,
+    totalRecipients,
+    byAudience:      campaignsByAudience,
+  };
+
+  // ── Retention Analytics ──────────────────────────────────────────────
+
+  const retConverted = retentionRecs.filter((r) => r.status === "converted").length;
+  const retPending   = retentionRecs.filter((r) => r.status === "pending").length;
+  const retDismissed = retentionRecs.filter((r) => r.status === "dismissed").length;
+
+  const retentionAnalytics: RetentionAnalyticsMetrics = {
+    totalRecommendations: retentionRecs.length,
+    pending:              retPending,
+    converted:            retConverted,
+    dismissed:            retDismissed,
+    conversionRate:       retentionRecs.length > 0
+      ? Math.round((retConverted / retentionRecs.length) * 100)
+      : 0,
+  };
+
   return {
     analyticsVersion: "1.0",
     generatedAt:      now.toISOString(),
@@ -324,5 +376,7 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     achievements: achievementMetrics,
     notifications: notifMetrics,
     sponsor,
+    campaigns:   campaignAnalytics,
+    retention:   retentionAnalytics,
   };
 }
