@@ -317,6 +317,322 @@ function TeamManagementCard() {
   );
 }
 
+// ─── Campaign Manager Card (GROWTH-002) ──────────────────────────────────
+
+const AUDIENCE_LABELS: Record<string, string> = {
+  ALL_MANAGERS:       "All Registered Managers",
+  ACTIVE_THIS_WEEK:   "Active Managers This Week",
+  INACTIVE_TWO_WEEKS: "Inactive for 2+ Weeks",
+  NEVER_DRAFTED:      "Never Submitted a Lineup",
+  NO_ACHIEVEMENTS:    "No Badges Earned",
+  REFERRED_USERS:     "Referred Managers",
+  SINGLE_USER:        "Single Manager",
+};
+
+const NOTIF_TYPES = ["SYSTEM","ADMIN","REFERRAL","ACHIEVEMENT","REPORT","LEAGUE"];
+
+type CampaignRow = { campaign_id: string; title: string; subject: string; audience_type: string; status: string; recipient_count: string | number; sent_at: string; created_at: string; };
+type Step = "list" | "content" | "audience" | "preview" | "sending" | "sent";
+
+function CampaignManagerCard() {
+  const [step,       setStep]       = React.useState<Step>("list");
+  const [campaigns,  setCampaigns]  = React.useState<CampaignRow[]>([]);
+  const [loading,    setLoading]    = React.useState(false);
+  const [draftId,    setDraftId]    = React.useState<string | null>(null);
+  const [preview,    setPreview]    = React.useState<any>(null);
+  const [polling,    setPolling]    = React.useState<any>(null);
+  const [sendResult, setSendResult] = React.useState<any>(null);
+  const [confirmEnabled, setConfirmEnabled] = React.useState(false);
+  const [userSearch, setUserSearch] = React.useState("");
+  const [userResults, setUserResults] = React.useState<any[]>([]);
+  const [msg, setMsg] = React.useState("");
+
+  // Campaign form
+  const [form, setForm] = React.useState({
+    title: "", subject: "", message: "", notification_type: "SYSTEM",
+    link: "", priority: "normal", audience_type: "ALL_MANAGERS",
+    audience_filter: {} as Record<string, any>,
+    selected_user: null as any,
+  });
+
+  function f(k: string, v: any) { setForm((p) => ({ ...p, [k]: v })); }
+
+  // Load campaigns list
+  async function loadList() {
+    setLoading(true);
+    try {
+      const res = await api.get("/admin/campaigns");
+      setCampaigns(res.data.campaigns || []);
+    } catch { /* non-fatal */ }
+    finally { setLoading(false); }
+  }
+
+  React.useEffect(() => { loadList(); }, []);
+
+  // User search for SINGLE_USER
+  React.useEffect(() => {
+    if (form.audience_type !== "SINGLE_USER" || userSearch.length < 2) { setUserResults([]); return; }
+    const t = setTimeout(() => {
+      api.get(`/admin/campaigns/users/search?q=${encodeURIComponent(userSearch)}`)
+        .then((r: any) => setUserResults(r.data.users || [])).catch(() => {});
+    }, 300);
+    return () => clearTimeout(t);
+  }, [userSearch, form.audience_type]);
+
+  // Poll for completion while sending
+  React.useEffect(() => {
+    if (step !== "sending" || !draftId) return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await api.get(`/admin/campaigns/${draftId}`);
+        const c = res.data.campaign;
+        if (c?.status === "sent") {
+          clearInterval(interval);
+          setPolling(null);
+          setSendResult(c);
+          setStep("sent");
+          loadList();
+        }
+      } catch { /* non-fatal */ }
+    }, 3000);
+    setPolling(interval);
+    return () => clearInterval(interval);
+  }, [step, draftId]);
+
+  async function createDraft() {
+    if (!form.title.trim() || !form.subject.trim() || !form.message.trim()) {
+      setMsg("Title, subject, and message are required."); return;
+    }
+    setMsg(""); setLoading(true);
+    try {
+      const filter = form.audience_type === "SINGLE_USER" && form.selected_user
+        ? { user_id: form.selected_user.user_id } : {};
+      const res = await api.post("/admin/campaigns", {
+        title: form.title, subject: form.subject, message: form.message,
+        notification_type: form.notification_type,
+        audience_type: form.audience_type, audience_filter: filter,
+        link: form.link || undefined, priority: form.priority,
+      });
+      setDraftId(res.data.campaign_id);
+      setStep("preview");
+      // Load preview
+      const pRes = await api.get(`/admin/campaigns/${res.data.campaign_id}/preview`);
+      setPreview(pRes.data);
+      // Enable confirm after 2s
+      setConfirmEnabled(false);
+      setTimeout(() => setConfirmEnabled(true), 2000);
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Failed to create campaign.");
+    } finally { setLoading(false); }
+  }
+
+  async function confirmSend() {
+    if (!draftId) return;
+    setLoading(true);
+    try {
+      await api.post(`/admin/campaigns/${draftId}/send`);
+      setStep("sending");
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Send failed.");
+    } finally { setLoading(false); }
+  }
+
+  async function cancelDraft() {
+    if (!draftId) return;
+    await api.post(`/admin/campaigns/${draftId}/cancel`).catch(() => {});
+    setDraftId(null); setPreview(null); setStep("list"); loadList();
+  }
+
+  function reset() {
+    setStep("list"); setDraftId(null); setPreview(null); setSendResult(null);
+    setForm({ title: "", subject: "", message: "", notification_type: "SYSTEM", link: "", priority: "normal", audience_type: "ALL_MANAGERS", audience_filter: {}, selected_user: null });
+    setMsg(""); loadList();
+  }
+
+  const STATUS_CLS: Record<string, string> = {
+    draft: "text-yellow-400", sending: "text-court-orange",
+    sent: "text-court-green", cancelled: "text-gray-500",
+  };
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <h2 className="font-bold">📣 Campaign Manager</h2>
+        {step === "list" && (
+          <button onClick={() => setStep("content")} className="btn-primary text-xs py-1.5 px-3">+ New Campaign</button>
+        )}
+        {step !== "list" && (
+          <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+        )}
+      </div>
+
+      {/* ── Step: List ── */}
+      {step === "list" && (
+        <>
+          {loading ? <div className="h-16 animate-pulse bg-[#1f2733] rounded" /> :
+           campaigns.length === 0 ? <p className="text-sm text-gray-400">No campaigns yet. Create your first campaign.</p> : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-gray-500 border-b border-[#1f2733]">
+                    <th className="text-left py-2 pr-3">Campaign</th>
+                    <th className="text-left py-2 px-2">Audience</th>
+                    <th className="text-center py-2 px-2">Status</th>
+                    <th className="text-right py-2 pl-2">Sent To</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {campaigns.map((c) => (
+                    <tr key={c.campaign_id} className="border-b border-[#1f2733]">
+                      <td className="py-2 pr-3">
+                        <p className="font-medium truncate max-w-[180px]">{c.title}</p>
+                        <p className="text-gray-600 text-[10px]">{new Date(c.created_at).toLocaleDateString()}</p>
+                      </td>
+                      <td className="py-2 px-2 text-gray-400 text-[11px]">{AUDIENCE_LABELS[c.audience_type] || c.audience_type}</td>
+                      <td className={`py-2 px-2 text-center font-semibold capitalize ${STATUS_CLS[c.status] || "text-gray-400"}`}>{c.status}</td>
+                      <td className="py-2 pl-2 text-right text-gray-400">{c.recipient_count || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Step: Content ── */}
+      {step === "content" && (
+        <div className="flex flex-col gap-3">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Step 1 — Campaign Content</p>
+          {[
+            { label: "Internal Title",    key: "title",   placeholder: "e.g. Draft Reminder Week 4" },
+            { label: "User Subject Line", key: "subject", placeholder: "What users will see as the notification title" },
+          ].map(({ label, key, placeholder }) => (
+            <div key={key} className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">{label}</label>
+              <input className="input-field" placeholder={placeholder} value={(form as any)[key]} onChange={e => f(key, e.target.value)} />
+            </div>
+          ))}
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Message</label>
+            <textarea className="input-field" rows={3} placeholder="Notification message body" value={form.message} onChange={e => f("message", e.target.value)} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Type</label>
+              <select className="input-field" value={form.notification_type} onChange={e => f("notification_type", e.target.value)}>
+                {NOTIF_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500">Priority</label>
+              <select className="input-field" value={form.priority} onChange={e => f("priority", e.target.value)}>
+                <option value="high">High</option>
+                <option value="normal">Normal</option>
+                <option value="low">Low</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Deep Link (optional)</label>
+            <input className="input-field" placeholder="e.g. /invite or /lineup" value={form.link} onChange={e => f("link", e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-xs text-gray-500">Audience</label>
+            <select className="input-field" value={form.audience_type} onChange={e => f("audience_type", e.target.value)}>
+              {Object.entries(AUDIENCE_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select>
+          </div>
+          {form.audience_type === "SINGLE_USER" && (
+            <div className="flex flex-col gap-2">
+              <input className="input-field" placeholder="Search manager by name..." value={userSearch} onChange={e => setUserSearch(e.target.value)} />
+              {userResults.length > 0 && (
+                <div className="bg-[#0b0f14] rounded-lg border border-[#1f2733]">
+                  {userResults.map((u) => (
+                    <button key={u.user_id} onClick={() => { f("selected_user", u); setUserSearch(u.display_name); setUserResults([]); }}
+                      className="w-full text-left px-3 py-2 text-xs hover:bg-[#1f2733] flex items-center justify-between">
+                      <span className="font-medium">{u.display_name}</span>
+                      <span className="text-gray-500 font-mono">{u.phone_masked}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+              {form.selected_user && (
+                <p className="text-xs text-court-green">Selected: {form.selected_user.display_name} ({form.selected_user.phone_masked})</p>
+              )}
+            </div>
+          )}
+          {msg && <p className="text-xs text-red-400">{msg}</p>}
+          <button onClick={createDraft} disabled={loading} className="btn-primary text-sm disabled:opacity-50">
+            {loading ? "Creating..." : "Next: Preview"}
+          </button>
+        </div>
+      )}
+
+      {/* ── Step: Preview ── */}
+      {step === "preview" && preview && (
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Step 2 — Preview & Confirm</p>
+          <div className="bg-[#0b0f14] rounded-lg p-4">
+            <p className="text-xs text-gray-500 mb-2">{AUDIENCE_LABELS[preview.audience_type] || preview.audience_type}</p>
+            <p className="text-2xl font-bold text-court-orange">{preview.recipient_count}</p>
+            <p className="text-sm text-gray-400">managers will receive this notification</p>
+          </div>
+          {preview.sample?.length > 0 && (
+            <div>
+              <p className="text-xs text-gray-500 mb-1">Sample recipients:</p>
+              {preview.sample.map((s: any, i: number) => (
+                <p key={i} className="text-xs text-gray-300">{s.display_name} <span className="text-gray-600 font-mono">{s.phone_masked}</span></p>
+              ))}
+            </div>
+          )}
+          <div className="rounded-lg border border-yellow-700/40 bg-yellow-900/10 p-3 text-xs text-yellow-300">
+            This campaign will notify {preview.recipient_count} manager{preview.recipient_count !== 1 ? "s" : ""}. This action cannot be undone.
+          </div>
+          <div className="flex gap-2">
+            <button onClick={confirmSend} disabled={!confirmEnabled || loading}
+              className="btn-primary text-sm disabled:opacity-40">
+              {loading ? "Sending..." : confirmEnabled ? "Send Campaign" : "Send Campaign (wait...)"}
+            </button>
+            <button onClick={cancelDraft} className="px-3 py-1.5 rounded bg-[#1f2733] text-xs font-semibold text-gray-400">Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Step: Sending ── */}
+      {step === "sending" && (
+        <div className="flex flex-col items-center gap-4 py-6">
+          <div className="w-8 h-8 border-2 border-court-orange border-t-transparent rounded-full animate-spin" />
+          <p className="text-sm font-medium">Sending campaign...</p>
+          <p className="text-xs text-gray-500">Notifications are being delivered. This may take a moment.</p>
+        </div>
+      )}
+
+      {/* ── Step: Sent ── */}
+      {step === "sent" && sendResult && (
+        <div className="flex flex-col gap-4">
+          <div className="text-center py-4">
+            <p className="text-3xl mb-2">✅</p>
+            <p className="font-bold">Campaign Delivered</p>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {[
+              { label: "Delivered",  value: sendResult.recipient_count, color: "text-court-green" },
+              { label: "Duration",   value: `${Math.round((sendResult.delivery_duration_ms || 0) / 1000)}s`, color: "" },
+            ].map((m) => (
+              <div key={m.label} className="bg-[#0b0f14] rounded-lg p-3 text-center">
+                <p className={`text-lg font-bold ${m.color || "text-court-orange"}`}>{m.value}</p>
+                <p className="text-xs text-gray-500">{m.label}</p>
+              </div>
+            ))}
+          </div>
+          <button onClick={reset} className="btn-primary text-sm w-fit">Back to Campaigns</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Growth Analytics Card (GROWTH-001) ──────────────────────────────────
 
 function GrowthAnalyticsCard() {
@@ -2372,6 +2688,9 @@ export default function AdminPage() {
 
       {/* FEATURE-002: Team Status Management */}
       <TeamManagementCard />
+
+      {/* GROWTH-002: Campaign Manager */}
+      <CampaignManagerCard />
 
       {/* GROWTH-001: Manager Engagement Analytics */}
       <GrowthAnalyticsCard />
