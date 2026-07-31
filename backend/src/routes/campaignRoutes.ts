@@ -13,18 +13,44 @@
 import express from "express";
 import { authenticate, requireAdmin, AuthRequest } from "../middleware/auth";
 import { logAdminAction } from "../services/adminActionLogger";
+import { channelRegistry } from "../services/channelRegistry";
 import {
-  createCampaign,
-  listCampaigns,
-  getCampaign,
-  previewCampaign,
-  sendCampaign,
-  cancelCampaign,
-  searchUsers,
-  AUDIENCE_LABELS,
+  createCampaign, listCampaigns, getCampaign,
+  previewCampaign, sendCampaign, cancelCampaign,
+  searchUsers, AUDIENCE_LABELS,
 } from "../services/campaignService";
+import { deliverCampaign } from "../services/communicationHub";
+import { resolveAudience } from "../services/campaignService";
 
 const router = express.Router();
+
+// ─── Channel capabilities (must be before /:id routes) ───────────────────
+
+router.get("/admin/campaigns/channels", authenticate, requireAdmin, (_req, res) => {
+  res.json({ channels: channelRegistry.capabilities() });
+});
+
+// ─── WhatsApp queue for a sent campaign ──────────────────────────────────
+// Returns the resolved WhatsApp links for admin queue workflow.
+// Links are generated fresh each call — never stored in the sheet.
+
+router.get("/admin/campaigns/:id/whatsapp-queue", authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const campaign = await getCampaign(req.params.id);
+    if (!campaign) return res.status(404).json({ error: "Campaign not found." });
+    const channels = campaign.channels ? JSON.parse(campaign.channels) : ["notification"];
+    if (!channels.includes("whatsapp"))
+      return res.status(400).json({ error: "Campaign does not include WhatsApp channel." });
+
+    const filter     = campaign.audience_filter ? JSON.parse(campaign.audience_filter) : {};
+    const recipients = await resolveAudience(campaign.audience_type as any, filter);
+    const { whatsappLinks } = await deliverCampaign(campaign, recipients, ["whatsapp"]);
+
+    res.json({ links: whatsappLinks ?? [], campaign_id: req.params.id });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || "Queue generation failed." });
+  }
+});
 
 // ─── User search (must be before /:id routes) ─────────────────────────────
 
@@ -53,7 +79,7 @@ router.get("/admin/campaigns", authenticate, requireAdmin, async (req: AuthReque
 // ─── Create ───────────────────────────────────────────────────────────────
 
 router.post("/admin/campaigns", authenticate, requireAdmin, async (req: AuthRequest, res) => {
-  const { title, subject, message, notification_type, audience_type, audience_filter, link, priority } = req.body;
+  const { title, subject, message, notification_type, audience_type, audience_filter, link, priority, channels } = req.body;
   if (!title?.trim())           return res.status(400).json({ error: "title is required." });
   if (!subject?.trim())         return res.status(400).json({ error: "subject is required." });
   if (!message?.trim())         return res.status(400).json({ error: "message is required." });
@@ -65,6 +91,7 @@ router.post("/admin/campaigns", authenticate, requireAdmin, async (req: AuthRequ
   try {
     const result = await createCampaign({
       title, subject, message, notification_type, audience_type, audience_filter, link, priority,
+      channels: channels ?? ["notification"],
       created_by: req.user!.user_id,
     });
 

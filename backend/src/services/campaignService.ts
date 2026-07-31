@@ -10,8 +10,9 @@
 import { v4 as uuidv4 } from "uuid";
 import { getSheetData, appendRow, updateRow } from "./sheetsService";
 import { normalizeSheetPhone } from "../utils/phoneUtils";
-import { notificationEngine } from "./notificationEventEngine";
 import { logAdminAction } from "./adminActionLogger";
+import { deliverCampaign } from "./communicationHub";
+import type { ChannelId } from "./adapters/channelAdapter";
 import type { NotificationType, NotificationPriority } from "./notificationEventEngine";
 
 // ─── Audience types ───────────────────────────────────────────────────────
@@ -157,6 +158,7 @@ interface CreateCampaignInput {
   link?:             string;
   priority?:         NotificationPriority;
   created_by:        string;
+  channels?:         ChannelId[];  // GROWTH-004: default ["notification"]
 }
 
 export async function createCampaign(input: CreateCampaignInput) {
@@ -179,7 +181,10 @@ export async function createCampaign(input: CreateCampaignInput) {
     created_at:        now,
     link:              input.link || "",
     priority:          input.priority || "normal",
-    delivery_duration_ms: "",
+    channels:          JSON.stringify(input.channels ?? ["notification"]),
+    delivery_results:  "",
+    whatsapp_queue_status: "",
+    delivery_duration_ms:  "",
   });
 
   return { campaign_id, status: "draft", created_at: now };
@@ -271,47 +276,31 @@ async function _deliverCampaign(
   campaign_id: string,
   admin_id: string
 ) {
-  const startMs  = Date.now();
-  const filter   = campaign.audience_filter ? JSON.parse(campaign.audience_filter) : {};
+  const startMs    = Date.now();
+  const filter     = campaign.audience_filter ? JSON.parse(campaign.audience_filter) : {};
   const recipients = await resolveAudience(campaign.audience_type as AudienceType, filter);
+  const channels   = campaign.channels
+    ? (JSON.parse(campaign.channels) as ChannelId[])
+    : ["notification" as ChannelId];
 
-  const delay = recipients.length > 200 ? 200 : 100; // ms between writes
-  let delivered = 0;
-  let skipped   = 0;
-  let failed    = 0;
+  // ── GROWTH-004: delegate to CommunicationHub ──────────────────────────
+  const { summary, whatsappLinks, duration_ms } = await deliverCampaign(
+    campaign, recipients, channels
+  );
 
-  for (const recipient of recipients) {
-    try {
-      const result = await notificationEngine.dispatch({
-        idempotencyKey: `CAMPAIGN:${campaign_id}:${recipient.user_id}`,
-        user_id:        recipient.user_id,
-        type:           campaign.notification_type as NotificationType,
-        title:          campaign.subject,
-        message:        campaign.message,
-        link:           campaign.link || null,
-        priority:       (campaign.priority || "normal") as NotificationPriority,
-        metadata:       { campaign_id, audience_type: campaign.audience_type },
-      });
+  const notifDelivered = (summary["notification"]?.confirmed ?? 0);
+  const durationMs     = duration_ms;
 
-      if (result.dispatched > 0) delivered++;
-      else skipped++;    // idempotency key already existed
-    } catch {
-      failed++;
-    }
-
-    if (delay > 0) await new Promise((r) => setTimeout(r, delay));
-  }
-
-  const durationMs = Date.now() - startMs;
-
-  // Update campaign to sent with delivery summary
+  // Update campaign with unified delivery results
   const refreshed = await getCampaign(campaign_id);
   await updateRow("Campaigns", "campaign_id", campaign_id, {
     ...refreshed,
     status:               "sent",
-    recipient_count:      delivered,
+    recipient_count:      notifDelivered,
     sent_at:              new Date().toISOString(),
     delivery_duration_ms: durationMs,
+    delivery_results:     JSON.stringify(summary),
+    whatsapp_queue_status: whatsappLinks && whatsappLinks.length > 0 ? "pending" : "",
   });
 
   await logAdminAction({
@@ -319,11 +308,11 @@ async function _deliverCampaign(
     action_type: "COMPLETE_CAMPAIGN",
     entity_type: "CAMPAIGN",
     entity_id:   campaign_id,
-    details:     `Campaign "${campaign.title}" completed. Delivered: ${delivered}, Skipped: ${skipped}, Failed: ${failed}. Duration: ${durationMs}ms.`,
+    details:     `Campaign "${campaign.title}" completed. Channels: ${channels.join(",")}. Notification confirmed: ${notifDelivered}. Duration: ${durationMs}ms.`,
     status:      "success",
   });
 
-  console.log(`[Campaign] ${campaign_id} complete — delivered:${delivered} skipped:${skipped} failed:${failed} in ${durationMs}ms`);
+  console.log(`[Campaign] ${campaign_id} complete — notification confirmed:${notifDelivered} in ${durationMs}ms`);
 }
 
 // ─── Cancel campaign ──────────────────────────────────────────────────────

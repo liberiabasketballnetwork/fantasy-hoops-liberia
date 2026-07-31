@@ -499,6 +499,9 @@ function CampaignManagerCard() {
   const [userSearch, setUserSearch] = React.useState("");
   const [userResults, setUserResults] = React.useState<any[]>([]);
   const [msg, setMsg] = React.useState("");
+  // GROWTH-004: WhatsApp queue
+  const [waQueue,    setWaQueue]    = React.useState<any[]>([]);
+  const [waIdx,      setWaIdx]      = React.useState(0);
 
   // Campaign form
   const [form, setForm] = React.useState({
@@ -506,6 +509,7 @@ function CampaignManagerCard() {
     link: "", priority: "normal", audience_type: "ALL_MANAGERS",
     audience_filter: {} as Record<string, any>,
     selected_user: null as any,
+    channels: ["notification"] as string[],  // GROWTH-004
   });
 
   function f(k: string, v: any) { setForm((p) => ({ ...p, [k]: v })); }
@@ -545,6 +549,22 @@ function CampaignManagerCard() {
           setSendResult(c);
           setStep("sent");
           loadList();
+          // Load WhatsApp queue if applicable
+          const chs = c.channels ? JSON.parse(c.channels) : ["notification"];
+          if (chs.includes("whatsapp")) {
+            const lsKey = `wa_queue_${c.campaign_id}`;
+            const cached = localStorage.getItem(lsKey);
+            if (cached) {
+              setWaQueue(JSON.parse(cached)); setWaIdx(0);
+            } else {
+              api.get(`/admin/campaigns/${c.campaign_id}/whatsapp-queue`)
+                .then((r: any) => {
+                  setWaQueue(r.data.links || []);
+                  setWaIdx(0);
+                  localStorage.setItem(lsKey, JSON.stringify(r.data.links || []));
+                }).catch(() => {});
+            }
+          }
         }
       } catch { /* non-fatal */ }
     }, 3000);
@@ -565,13 +585,12 @@ function CampaignManagerCard() {
         notification_type: form.notification_type,
         audience_type: form.audience_type, audience_filter: filter,
         link: form.link || undefined, priority: form.priority,
+        channels: form.channels,    // GROWTH-004
       });
       setDraftId(res.data.campaign_id);
       setStep("preview");
-      // Load preview
       const pRes = await api.get(`/admin/campaigns/${res.data.campaign_id}/preview`);
       setPreview(pRes.data);
-      // Enable confirm after 2s
       setConfirmEnabled(false);
       setTimeout(() => setConfirmEnabled(true), 2000);
     } catch (err: any) {
@@ -598,7 +617,7 @@ function CampaignManagerCard() {
 
   function reset() {
     setStep("list"); setDraftId(null); setPreview(null); setSendResult(null);
-    setForm({ title: "", subject: "", message: "", notification_type: "SYSTEM", link: "", priority: "normal", audience_type: "ALL_MANAGERS", audience_filter: {}, selected_user: null });
+    setForm({ title: "", subject: "", message: "", notification_type: "SYSTEM", link: "", priority: "normal", audience_type: "ALL_MANAGERS", audience_filter: {}, selected_user: null, channels: ["notification"] });
     setMsg(""); loadList();
   }
 
@@ -715,6 +734,34 @@ function CampaignManagerCard() {
               )}
             </div>
           )}
+          {/* GROWTH-004: Channel selector */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-gray-500">Delivery Channels</label>
+            {[
+              { id: "notification", label: "In-App Notification", available: true },
+              { id: "whatsapp",     label: "WhatsApp",            available: true },
+              { id: "sms",          label: "SMS",                 available: false },
+              { id: "email",        label: "Email",               available: false },
+            ].map(({ id, label, available }) => (
+              <label key={id} className={`flex items-center gap-2 text-sm cursor-pointer ${!available ? "opacity-40 cursor-not-allowed" : ""}`}>
+                <input type="checkbox" disabled={!available || id === "notification"}
+                  checked={form.channels.includes(id)}
+                  onChange={e => {
+                    if (!available || id === "notification") return;
+                    setForm(f => ({
+                      ...f,
+                      channels: e.target.checked
+                        ? [...f.channels, id]
+                        : f.channels.filter(c => c !== id),
+                    }));
+                  }}
+                  className="accent-court-orange"
+                />
+                <span>{label}</span>
+                {!available && <span className="text-[10px] text-gray-600 ml-1">Coming Soon</span>}
+              </label>
+            ))}
+          </div>
           {msg && <p className="text-xs text-red-400">{msg}</p>}
           <button onClick={createDraft} disabled={loading} className="btn-primary text-sm disabled:opacity-50">
             {loading ? "Creating..." : "Next: Preview"}
@@ -770,8 +817,8 @@ function CampaignManagerCard() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {[
-              { label: "Delivered",  value: sendResult.recipient_count, color: "text-court-green" },
-              { label: "Duration",   value: `${Math.round((sendResult.delivery_duration_ms || 0) / 1000)}s`, color: "" },
+              { label: "Notifications",  value: sendResult.recipient_count, color: "text-court-green" },
+              { label: "Duration",       value: `${Math.round((sendResult.delivery_duration_ms || 0) / 1000)}s`, color: "" },
             ].map((m) => (
               <div key={m.label} className="bg-[#0b0f14] rounded-lg p-3 text-center">
                 <p className={`text-lg font-bold ${m.color || "text-court-orange"}`}>{m.value}</p>
@@ -779,6 +826,48 @@ function CampaignManagerCard() {
               </div>
             ))}
           </div>
+
+          {/* WhatsApp queue */}
+          {waQueue.length > 0 && (
+            <div className="border border-[#1f2733] rounded-lg p-4 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-semibold">WhatsApp Queue</p>
+                <span className="text-xs text-gray-500">{Math.min(waIdx + 1, waQueue.length)}/{waQueue.length}</span>
+              </div>
+              {waIdx < waQueue.length ? (
+                <div className="bg-[#0b0f14] rounded-lg p-3 flex flex-col gap-3">
+                  <div>
+                    <p className="font-medium">{waQueue[waIdx].display_name}</p>
+                    <p className="text-xs text-gray-500 font-mono">{waQueue[waIdx].phone_masked}</p>
+                  </div>
+                  <div className="flex gap-2 flex-wrap">
+                    <a href={waQueue[waIdx].link} target="_blank" rel="noopener noreferrer"
+                      className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1"
+                      onClick={() => {
+                        // Persist progress in localStorage
+                        const lsKey = `wa_sent_${draftId}`;
+                        const sent = JSON.parse(localStorage.getItem(lsKey) || "[]");
+                        sent.push(waQueue[waIdx].user_id);
+                        localStorage.setItem(lsKey, JSON.stringify(sent));
+                      }}>
+                      Open WhatsApp
+                    </a>
+                    <button onClick={() => setWaIdx(i => i + 1)}
+                      className="px-3 py-1.5 rounded bg-court-green/20 text-court-green text-xs font-semibold">
+                      Mark Sent
+                    </button>
+                    <button onClick={() => setWaIdx(i => i + 1)}
+                      className="px-3 py-1.5 rounded bg-[#1f2733] text-gray-400 text-xs font-semibold">
+                      Skip
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-court-green text-center py-2">WhatsApp queue complete!</p>
+              )}
+            </div>
+          )}
+
           <button onClick={reset} className="btn-primary text-sm w-fit">Back to Campaigns</button>
         </div>
       )}

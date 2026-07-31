@@ -37,7 +37,7 @@ export const SHEET_HEADERS: Record<string, string[]> = {
   [SHEET_NAMES.REFERRALS]:        ["referrer_user_id","referred_user_id","referral_code","referral_date","status","qualified_at"],
   [SHEET_NAMES.REFERRAL_REWARDS]: ["reward_id","referral_id","referrer_user_id","referred_user_id","reward_type","reward_value","status","created_at","reviewed_at","paid_at","admin_id","payment_reference","admin_notes"],
   [SHEET_NAMES.PASSWORD_RESET_REQUESTS]: ["request_id","request_reference","user_id","phone","status","requested_at","actioned_at","actioned_by","admin_notes","expires_at"],
-  [SHEET_NAMES.CAMPAIGNS]: ["campaign_id","title","subject","message","notification_type","audience_type","audience_filter","status","recipient_count","scheduled_at","sent_at","created_by","created_at","link","priority","delivery_duration_ms"],
+  [SHEET_NAMES.CAMPAIGNS]: ["campaign_id","title","subject","message","notification_type","audience_type","audience_filter","status","recipient_count","scheduled_at","sent_at","created_by","created_at","link","priority","delivery_duration_ms","channels","delivery_results","whatsapp_queue_status"],
   [SHEET_NAMES.RETENTION_RECOMMENDATIONS]: ["recommendation_id","recommendation_type","title","description","audience_type","audience_filter","recommended_subject","recommended_message","status","campaign_id","created_at","created_by","dismissed_at","completed_at"],
   [SHEET_NAMES.TEAMS]:   ["team_id","team_name","division","logo_url","status","created_at"],
   [SHEET_NAMES.PLAYERS]: ["player_id","full_name","team_id","position","fantasy_price","status","games_played","average_points","average_rebounds","average_assists","photo_url","import_alias","source","created_at"],
