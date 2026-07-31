@@ -317,6 +317,289 @@ function TeamManagementCard() {
   );
 }
 
+// ─── Growth Analytics Card (GROWTH-001) ──────────────────────────────────
+
+function GrowthAnalyticsCard() {
+  const [analytics, setAnalytics] = React.useState<any>(null);
+  const [loading,   setLoading]   = React.useState(false);
+  const [error,     setError]     = React.useState("");
+  const [sections,  setSections]  = React.useState<Record<string,boolean>>({
+    growth: true, funnel: true, engagement: true,
+    referrals: true, achievements: true, notifications: true, sponsor: true,
+  });
+
+  function toggle(key: string) {
+    setSections((s) => ({ ...s, [key]: !s[key] }));
+  }
+
+  async function loadAnalytics() {
+    setLoading(true); setError("");
+    try {
+      const res = await api.get("/admin/platform-analytics");
+      setAnalytics(res.data);
+    } catch (err: any) {
+      setError(err?.response?.data?.error || "Failed to load analytics.");
+    } finally { setLoading(false); }
+  }
+
+  const a = analytics;
+
+  // ── Subcomponents ─────────────────────────────────────────────────────
+
+  function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
+    return (
+      <div className="border border-[#1f2733] rounded-lg overflow-hidden">
+        <button onClick={() => toggle(id)} className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-[#0b0f14] transition-colors">
+          <span className="text-sm font-semibold">{title}</span>
+          <span className="text-gray-500 text-xs">{sections[id] ? "▼" : "▶"}</span>
+        </button>
+        {sections[id] && <div className="px-4 pb-4 pt-2">{children}</div>}
+      </div>
+    );
+  }
+
+  function MetricGrid({ items }: { items: { label: string; value: string | number; sub?: string; color?: string }[] }) {
+    return (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {items.map((m) => (
+          <div key={m.label} className="bg-[#0b0f14] rounded-lg p-3 text-center">
+            <p className={`text-xl font-bold ${m.color || "text-court-orange"}`}>{m.value}</p>
+            {m.sub && <p className="text-[10px] text-gray-600 -mt-0.5">{m.sub}</p>}
+            <p className="text-xs text-gray-500 mt-0.5 leading-tight">{m.label}</p>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="card p-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h2 className="font-bold">📊 Growth Analytics</h2>
+          <p className="text-xs text-gray-500 mt-0.5">
+            {a ? `Generated at ${new Date(a.generatedAt).toLocaleString()}` : "Load analytics on demand to avoid unnecessary API calls."}
+          </p>
+        </div>
+        <button
+          onClick={loadAnalytics}
+          disabled={loading}
+          className="px-3 py-1.5 rounded bg-court-orange text-white text-xs font-semibold hover:opacity-90 disabled:opacity-50"
+        >
+          {loading ? "Loading…" : a ? "Refresh" : "Load Analytics"}
+        </button>
+      </div>
+
+      {error && <p className="text-xs text-red-400 mb-4">{error}</p>}
+
+      {!a && !loading && (
+        <div className="text-center py-10 text-gray-500 text-sm border border-dashed border-[#1f2733] rounded-lg">
+          Click "Load Analytics" to view growth metrics
+        </div>
+      )}
+
+      {loading && (
+        <div className="flex flex-col gap-3">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-[#1f2733] rounded-lg animate-pulse" />)}
+        </div>
+      )}
+
+      {a && (
+        <div className="flex flex-col gap-3">
+
+          {/* 1. Community Growth */}
+          <Section id="growth" title="📈 Community Growth">
+            <MetricGrid items={[
+              { label: "Total Managers",    value: a.growth.totalManagers },
+              { label: "New This Week",     value: `+${a.growth.newThisWeek}`,    color: "text-court-green" },
+              { label: "New This Month",    value: `+${a.growth.newThisMonth}`,   color: "text-court-green" },
+              { label: "Active Last 7 Days",value: a.growth.activeLastSevenDays },
+            ]} />
+          </Section>
+
+          {/* 2. Activation Funnel */}
+          <Section id="funnel" title="🔄 Activation Funnel">
+            <div className="flex flex-col gap-1 mb-3">
+              {[
+                { label: "Registered",           value: a.funnel.registered,          pct: 100 },
+                { label: "Ever Submitted Lineup", value: a.funnel.everSubmittedLineup, pct: a.funnel.activationRate },
+                { label: "Active This Week",      value: a.funnel.activeThisWeek,      pct: a.funnel.registered > 0 ? Math.round(a.funnel.activeThisWeek / a.funnel.registered * 100) : 0 },
+              ].map((step) => (
+                <div key={step.label} className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex items-center justify-between text-xs mb-0.5">
+                      <span className="text-gray-300">{step.label}</span>
+                      <span className="text-gray-400 font-mono">{step.value} ({step.pct}%)</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-[#1f2733]">
+                      <div className="h-2 rounded-full bg-court-orange transition-all" style={{ width: `${step.pct}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <p className="text-xs text-red-400">{a.funnel.neverDrafted} registered managers have never submitted a lineup.</p>
+          </Section>
+
+          {/* 3. Weekly Engagement */}
+          <Section id="engagement" title="🗓 Weekly Engagement">
+            <MetricGrid items={[
+              { label: "This Week Active",   value: a.engagement.weeklyParticipation.at(-1)?.managers ?? 0 },
+              { label: "Retention Rate",     value: `${a.engagement.retentionRate}%`,   color: a.engagement.retentionRate >= 70 ? "text-court-green" : "text-yellow-400" },
+              { label: "Highest Week",       value: a.engagement.highestWeek },
+              { label: "Weekly Average",     value: a.engagement.averageWeekly },
+            ]} />
+            {a.engagement.weeklyParticipation.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 mb-2">Participation Trend</p>
+                <div className="flex items-end gap-1 h-20">
+                  {a.engagement.weeklyParticipation.map((w: any) => {
+                    const pct = a.engagement.highestWeek > 0 ? Math.round((w.managers / a.engagement.highestWeek) * 100) : 0;
+                    return (
+                      <div key={w.week_id} className="flex-1 flex flex-col items-center gap-1 group" title={`${w.label}: ${w.managers}`}>
+                        <span className="text-[9px] text-gray-600 group-hover:text-gray-400 hidden sm:block">{w.managers}</span>
+                        <div className="w-full rounded-t bg-court-orange/70 hover:bg-court-orange transition-all" style={{ height: `${Math.max(pct, 4)}%` }} />
+                        <span className="text-[9px] text-gray-600 truncate w-full text-center hidden sm:block">{w.label.split("–")[0]}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-2 text-xs text-gray-500 text-center">
+                  {a.engagement.previousWeekManagers > 0 && (
+                    <span>{a.engagement.returnedThisWeek}/{a.engagement.previousWeekManagers} managers returned from last week ({a.engagement.retentionRate}% retention)</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </Section>
+
+          {/* 4. Referral Performance */}
+          <Section id="referrals" title="🤝 Referral Performance">
+            <MetricGrid items={[
+              { label: "Referral Codes",  value: a.referrals.totalCodes },
+              { label: "Total Referrals", value: a.referrals.totalReferrals },
+              { label: "Qualified",       value: a.referrals.qualified },
+              { label: "Conversion",      value: `${a.referrals.conversionRate}%`, color: a.referrals.conversionRate >= 50 ? "text-court-green" : "text-yellow-400" },
+            ]} />
+            <div className="grid grid-cols-3 gap-2 mt-2">
+              {[
+                { label: "Rewards Pending",  value: a.referrals.rewardsPending,  color: "text-yellow-400" },
+                { label: "Approved",         value: a.referrals.rewardsApproved, color: "text-court-green" },
+                { label: "LRD Disbursed",    value: `L${Number(a.referrals.totalLrdDisbursed).toLocaleString()}`, color: "text-court-green" },
+              ].map((m) => (
+                <div key={m.label} className="bg-[#0b0f14] rounded-lg p-2 text-center">
+                  <p className={`text-base font-bold ${m.color}`}>{m.value}</p>
+                  <p className="text-[10px] text-gray-500">{m.label}</p>
+                </div>
+              ))}
+            </div>
+          </Section>
+
+          {/* 5. Achievement Engagement */}
+          <Section id="achievements" title="🏅 Achievement Engagement">
+            <MetricGrid items={[
+              { label: "Badges Earned",   value: a.achievements.totalEarned },
+              { label: "Earners",         value: a.achievements.uniqueEarners },
+              { label: "Adoption Rate",   value: `${a.achievements.adoptionRate}%`, color: a.achievements.adoptionRate >= 50 ? "text-court-green" : "text-yellow-400" },
+              { label: "No Badges Yet",   value: a.achievements.usersNoBadges, color: "text-gray-400" },
+            ]} />
+            {a.achievements.topBadges.length > 0 && (
+              <div className="mt-3">
+                <p className="text-xs text-gray-500 mb-2">Top Badges</p>
+                <div className="flex flex-col gap-1">
+                  {a.achievements.topBadges.map((b: any, i: number) => (
+                    <div key={b.key} className="flex items-center justify-between text-xs">
+                      <span className="text-gray-300">{i + 1}. {b.name}</span>
+                      <span className="font-bold text-court-orange">{b.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Section>
+
+          {/* 6. Notification Engagement */}
+          <Section id="notifications" title="🔔 Notification Engagement">
+            <div className="flex items-center gap-4 mb-3">
+              <div className="bg-[#0b0f14] rounded-lg px-4 py-2 text-center">
+                <p className="text-xl font-bold text-court-orange">{a.notifications.overallReadRate}%</p>
+                <p className="text-xs text-gray-500">Overall Read Rate</p>
+              </div>
+              <div className="text-xs text-gray-500">{a.notifications.overallRead}/{a.notifications.overallSent} notifications read</div>
+            </div>
+            {a.notifications.byType.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-gray-500 border-b border-[#1f2733]">
+                      <th className="text-left py-1.5">Type</th>
+                      <th className="text-right py-1.5">Sent</th>
+                      <th className="text-right py-1.5">Read</th>
+                      <th className="text-right py-1.5">Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {a.notifications.byType.map((n: any) => (
+                      <tr key={n.type} className="border-b border-[#1f2733]/50">
+                        <td className="py-1.5 text-gray-300 capitalize">{n.type.toLowerCase()}</td>
+                        <td className="text-right py-1.5 text-gray-400">{n.sent}</td>
+                        <td className="text-right py-1.5 text-gray-400">{n.read}</td>
+                        <td className={`text-right py-1.5 font-bold ${n.readRate >= 80 ? "text-court-green" : n.readRate >= 50 ? "text-yellow-400" : "text-red-400"}`}>
+                          {n.readRate}%
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Section>
+
+          {/* 7. Sponsor Summary */}
+          <Section id="sponsor" title="🤝 Sponsor Summary">
+            <div className="bg-[#0b0f14] rounded-lg p-4 border border-[#2a3441]">
+              <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-3">Fantasy Hoops Liberia — Community Metrics</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                {[
+                  { label: "Registered Managers",       value: a.sponsor.registeredManagers },
+                  { label: "Weekly Active Managers",    value: a.sponsor.activeThisWeek },
+                  { label: "Completed Gameweeks",       value: a.sponsor.completedGameweeks },
+                  { label: "Total Fantasy Teams Created",value: a.sponsor.totalFantasyTeamsCreated },
+                  { label: "Prize Money Awarded (LRD)", value: `L${Number(a.sponsor.prizeMoneyAwarded).toLocaleString()}` },
+                ].map((m) => (
+                  <div key={m.label} className="flex justify-between border-b border-[#1f2733] pb-2">
+                    <span className="text-gray-400">{m.label}</span>
+                    <span className="font-bold text-court-orange">{m.value}</span>
+                  </div>
+                ))}
+              </div>
+              <button
+                onClick={() => {
+                  const lines = [
+                    "Fantasy Hoops Liberia — Community Metrics",
+                    `Registered Managers: ${a.sponsor.registeredManagers}`,
+                    `Weekly Active Managers: ${a.sponsor.activeThisWeek}`,
+                    `Completed Gameweeks: ${a.sponsor.completedGameweeks}`,
+                    `Total Fantasy Teams: ${a.sponsor.totalFantasyTeamsCreated}`,
+                    `Prize Money Awarded: LRD ${Number(a.sponsor.prizeMoneyAwarded).toLocaleString()}`,
+                    `Generated: ${new Date(a.generatedAt).toLocaleDateString()}`,
+                  ].join("\n");
+                  navigator.clipboard?.writeText(lines);
+                }}
+                className="mt-3 text-xs text-gray-500 hover:text-gray-300 flex items-center gap-1"
+              >
+                Copy for sponsor presentation
+              </button>
+            </div>
+          </Section>
+
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Platform Settings Card (ADMIN-014) ──────────────────────────────────
 
 function PlatformSettingsCard() {
@@ -2089,6 +2372,9 @@ export default function AdminPage() {
 
       {/* FEATURE-002: Team Status Management */}
       <TeamManagementCard />
+
+      {/* GROWTH-001: Manager Engagement Analytics */}
+      <GrowthAnalyticsCard />
 
       {/* ADMIN-014: Platform Settings */}
       <PlatformSettingsCard />
