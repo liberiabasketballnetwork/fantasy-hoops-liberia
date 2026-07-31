@@ -313,8 +313,13 @@ export default function Navbar() {
 
           {/* Admin link */}
           {user?.isAdmin && (
-            <Link href="/admin" className={`text-sm hover:text-court-orange transition-colors ${pathname.startsWith("/admin") ? "text-court-orange font-semibold" : ""}`}>
+            <Link href="/admin" className={`text-sm hover:text-court-orange transition-colors ${pathname.startsWith("/admin") && !pathname.startsWith("/admin/sponsors") ? "text-court-orange font-semibold" : ""}`}>
               ⚙️ Admin
+            </Link>
+          )}
+          {user?.isAdmin && (
+            <Link href="/admin/sponsors" className={`text-sm hover:text-court-orange transition-colors ${pathname.startsWith("/admin/sponsors") ? "text-court-orange font-semibold" : ""}`}>
+              🤝 Sponsors
             </Link>
           )}
 
@@ -394,6 +399,12 @@ export default function Navbar() {
               className={`py-2 text-sm font-semibold hover:text-court-orange transition-colors ${pathname.startsWith("/admin") ? "text-court-orange" : ""}`}
             >
               ⚙️ Admin
+            </Link>
+          )}
+          {user?.isAdmin && (
+            <Link href="/admin/sponsors" onClick={() => setMobileOpen(false)}
+              className={`py-2 text-sm font-semibold hover:text-court-orange transition-colors ${pathname.startsWith("/admin/sponsors") ? "text-court-orange" : ""}`}>
+              🤝 Sponsors
             </Link>
           )}
 

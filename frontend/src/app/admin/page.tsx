@@ -317,6 +317,48 @@ function TeamManagementCard() {
   );
 }
 
+// ─── Commercial Summary Card (BUSINESS-001) ──────────────────────────────
+
+function CommercialSummaryCard() {
+  const [data,    setData]    = React.useState<any>(null);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    api.get("/admin/sponsors").then((r: any) => {
+      const sponsors = r.data.sponsors || [];
+      const active = sponsors.filter((s: any) => s.status === "active").length;
+      setData({ active, total: sponsors.length });
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h2 className="font-bold">🤝 Commercial Summary</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Sponsorship & partner platform</p>
+        </div>
+        <a href="/admin/sponsors" className="px-3 py-1.5 rounded bg-court-orange text-white text-xs font-semibold hover:opacity-90">
+          Manage Sponsors →
+        </a>
+      </div>
+      {loading ? <div className="h-12 animate-pulse bg-[#1f2733] rounded" /> : (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {[
+            { label: "Active Sponsors",    value: data?.active  ?? 0 },
+            { label: "Total Partners",     value: data?.total   ?? 0 },
+          ].map((m) => (
+            <div key={m.label} className="bg-[#0b0f14] rounded-lg p-3 text-center">
+              <p className="text-xl font-bold text-court-orange">{m.value}</p>
+              <p className="text-xs text-gray-500">{m.label}</p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Retention Recommendations Card (GROWTH-003) ─────────────────────────
 
 type RecRow = {
@@ -2367,6 +2409,12 @@ export default function AdminPage() {
                   <span>{w.start_date} → {w.end_date}</span>
                   <span>·</span>
                   <span>Deadline: {w.submission_deadline}</span>
+                  {/* BUSINESS-001: sponsor display */}
+                  {w.sponsor_id && (
+                    <span className="text-court-orange font-semibold text-xs">
+                      🤝 Sponsored
+                    </span>
+                  )}
                 </div>
                 <span className={`text-sm font-bold px-2.5 py-0.5 rounded-full ${statusBadge.cls}`}>
                   {statusBadge.label}
@@ -2954,6 +3002,9 @@ export default function AdminPage() {
 
       {/* FEATURE-002: Team Status Management */}
       <TeamManagementCard />
+
+      {/* BUSINESS-001: Commercial Summary */}
+      <CommercialSummaryCard />
 
       {/* GROWTH-003: Retention Recommendations */}
       <RetentionRecommendationsCard />

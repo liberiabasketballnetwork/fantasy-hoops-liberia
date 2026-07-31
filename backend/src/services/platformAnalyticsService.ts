@@ -24,6 +24,16 @@ export interface PlatformAnalytics {
   sponsor:          SponsorMetrics;
   campaigns:        CampaignAnalyticsMetrics;
   retention:        RetentionAnalyticsMetrics;
+  commercial:       CommercialAnalyticsMetrics;
+}
+
+interface CommercialAnalyticsMetrics {
+  activeSponsors:       number;
+  campaignsSponsored:   number;
+  gameweeksSponsored:   number;
+  totalManagersReached: number;
+  notificationDeliveries: number;
+  whatsappDeliveries:   number;
 }
 
 interface CampaignAnalyticsMetrics {
@@ -140,7 +150,7 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
   const [
     users, lineups, weeks, leaderboard, referrals, rewards,
     achievements, notifications, lineupPlayers, platformSettings,
-    campaigns, retentionRecs,
+    campaigns, retentionRecs, sponsors,
   ] = await Promise.all([
     getSheetData("Users"),
     getSheetData("User_Lineups"),
@@ -154,6 +164,7 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     getSheetData("Platform_Settings"),
     getSheetData("Campaigns").catch(() => []),
     getSheetData("Retention_Recommendations").catch(() => []),
+    getSheetData("Sponsors").catch(() => []),
   ]);
 
   // ── Community Growth ─────────────────────────────────────────────────
@@ -366,6 +377,41 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
       : 0,
   };
 
+  // ── Commercial Analytics (BUSINESS-001) ─────────────────────────────
+
+  const activeSponsors     = sponsors.filter((s) => s.status === "active").length;
+  const campaignsSponsored = campaigns.filter((c) => !!c.sponsor_id).length;
+  const gameweeksSponsored = weeks.filter((w) => !!w.sponsor_id).length;
+
+  let commNotifDeliveries = 0;
+  let commWaDeliveries    = 0;
+  const reachedViaSponsored = new Set<string>();
+
+  for (const c of campaigns.filter((c) => !!c.sponsor_id)) {
+    commNotifDeliveries += Number(c.recipient_count || 0);
+    if (c.delivery_results) {
+      try {
+        const dr = JSON.parse(c.delivery_results);
+        commWaDeliveries += dr.whatsapp?.prepared ?? 0;
+      } catch { /* skip */ }
+    }
+  }
+
+  // Managers who participated in sponsored gameweeks
+  const sponsoredWeekIds = new Set(weeks.filter((w) => !!w.sponsor_id).map((w) => w.week_id));
+  lineups
+    .filter((l) => sponsoredWeekIds.has(l.week_id))
+    .forEach((l) => reachedViaSponsored.add(l.user_id));
+
+  const commercial: CommercialAnalyticsMetrics = {
+    activeSponsors,
+    campaignsSponsored,
+    gameweeksSponsored,
+    totalManagersReached: reachedViaSponsored.size,
+    notificationDeliveries: commNotifDeliveries,
+    whatsappDeliveries:     commWaDeliveries,
+  };
+
   return {
     analyticsVersion: "1.0",
     generatedAt:      now.toISOString(),
@@ -378,5 +424,6 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     sponsor,
     campaigns:   campaignAnalytics,
     retention:   retentionAnalytics,
+    commercial,
   };
 }

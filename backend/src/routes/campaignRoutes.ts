@@ -79,7 +79,7 @@ router.get("/admin/campaigns", authenticate, requireAdmin, async (req: AuthReque
 // ─── Create ───────────────────────────────────────────────────────────────
 
 router.post("/admin/campaigns", authenticate, requireAdmin, async (req: AuthRequest, res) => {
-  const { title, subject, message, notification_type, audience_type, audience_filter, link, priority, channels } = req.body;
+  const { title, subject, message, notification_type, audience_type, audience_filter, link, priority, channels, sponsor_id } = req.body;
   if (!title?.trim())           return res.status(400).json({ error: "title is required." });
   if (!subject?.trim())         return res.status(400).json({ error: "subject is required." });
   if (!message?.trim())         return res.status(400).json({ error: "message is required." });
@@ -92,6 +92,7 @@ router.post("/admin/campaigns", authenticate, requireAdmin, async (req: AuthRequ
     const result = await createCampaign({
       title, subject, message, notification_type, audience_type, audience_filter, link, priority,
       channels: channels ?? ["notification"],
+      sponsor_id: sponsor_id || undefined,
       created_by: req.user!.user_id,
     });
 

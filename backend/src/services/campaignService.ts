@@ -159,6 +159,7 @@ interface CreateCampaignInput {
   priority?:         NotificationPriority;
   created_by:        string;
   channels?:         ChannelId[];  // GROWTH-004: default ["notification"]
+  sponsor_id?:       string;       // BUSINESS-001: optional commercial attribution
 }
 
 export async function createCampaign(input: CreateCampaignInput) {
@@ -185,6 +186,7 @@ export async function createCampaign(input: CreateCampaignInput) {
     delivery_results:  "",
     whatsapp_queue_status: "",
     delivery_duration_ms:  "",
+    sponsor_id:            input.sponsor_id || "",
   });
 
   return { campaign_id, status: "draft", created_at: now };

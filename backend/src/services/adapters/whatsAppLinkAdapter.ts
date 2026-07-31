@@ -44,6 +44,7 @@ const MERGE_DEFAULTS: Record<string, string> = {
   gameweek:      "this week",
   rank:          "N/A",
   referral_link: BASE_URL,
+  sponsor_name:  "",
 };
 
 export function applyMergeFields(

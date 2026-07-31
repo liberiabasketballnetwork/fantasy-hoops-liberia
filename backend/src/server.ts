@@ -38,6 +38,7 @@ import passwordResetRequestRoutes from "./routes/passwordResetRequestRoutes";
 import platformAnalyticsRoutes from "./routes/platformAnalyticsRoutes";
 import campaignRoutes from "./routes/campaignRoutes";
 import retentionRoutes from "./routes/retentionRoutes";
+import sponsorRoutes from "./routes/sponsorRoutes";
 import { migrateExistingUsers } from "./services/referralService";
 import { migrateTeamStatuses } from "./services/playerEligibilityService";
 // Bootstrap push destination (registers with engine at import time)
@@ -90,6 +91,7 @@ app.use("/", passwordResetRequestRoutes);  // /reset-request, /admin/reset-reque
 app.use("/", platformAnalyticsRoutes);     // /admin/platform-analytics
 app.use("/", campaignRoutes);              // /admin/campaigns/*
 app.use("/", retentionRoutes);             // /admin/retention/*
+app.use("/", sponsorRoutes);              // /admin/sponsors/*, /admin/weeks/:id/sponsor
 app.use("/", miscRoutes);
 
 app.use((req, res) => res.status(404).json({ error: "Route not found" }));
