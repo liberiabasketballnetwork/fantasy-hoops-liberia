@@ -377,7 +377,7 @@ const REC_ICONS: Record<string, string> = {
   ACHIEVEMENT_CELEBRATION: "🏅",
 };
 
-function RetentionRecommendationsCard() {
+function RetentionRecommendationsCard({ onCampaignCreated }: { onCampaignCreated?: () => void }) {
   const [recs,      setRecs]      = React.useState<RecRow[]>([]);
   const [loading,   setLoading]   = React.useState(false);
   const [generating,setGenerating]= React.useState(false);
@@ -413,6 +413,8 @@ function RetentionRecommendationsCard() {
       const res = await api.post(`/admin/retention/${id}/convert`);
       setMsg(`Campaign draft created: ${res.data.campaign_id.slice(0, 8)}... Open Campaign Manager to preview and send.`);
       load();
+      // AUDIT-002 fix: notify Campaign Manager to refresh its list
+      onCampaignCreated?.();
     } catch (err: any) {
       setMsg(err?.response?.data?.error || "Conversion failed.");
     } finally { setActing(null); }
@@ -529,7 +531,7 @@ const NOTIF_TYPES = ["SYSTEM","ADMIN","REFERRAL","ACHIEVEMENT","REPORT","LEAGUE"
 type CampaignRow = { campaign_id: string; title: string; subject: string; audience_type: string; status: string; recipient_count: string | number; sent_at: string; created_at: string; };
 type Step = "list" | "content" | "audience" | "preview" | "sending" | "sent";
 
-function CampaignManagerCard() {
+const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(function CampaignManagerCard(_props, ref) {
   const [step,       setStep]       = React.useState<Step>("list");
   const [campaigns,  setCampaigns]  = React.useState<CampaignRow[]>([]);
   const [loading,    setLoading]    = React.useState(false);
@@ -565,6 +567,9 @@ function CampaignManagerCard() {
     } catch { /* non-fatal */ }
     finally { setLoading(false); }
   }
+
+  // AUDIT-002 fix: expose reload to parent via ref
+  React.useImperativeHandle(ref, () => ({ reload: loadList }));
 
   React.useEffect(() => { loadList(); }, []);
 
@@ -915,7 +920,7 @@ function CampaignManagerCard() {
       )}
     </div>
   );
-}
+});
 
 // ─── Growth Analytics Card (GROWTH-001) ──────────────────────────────────
 
@@ -1548,6 +1553,9 @@ export default function AdminPage() {
   const [settings, setSettings] = useState({ salary_cap_enabled: true, budget_cap: 100 });
   const [weekForm, setWeekForm] = useState({ start_date: "", end_date: "", submission_deadline: "" });
   const [teamForm, setTeamForm] = useState({ team_name: "", division: "" });
+
+  // AUDIT-002: ref for cross-card communication (Retention → Campaign Manager)
+  const campaignManagerRef = React.useRef<{ reload: () => void }>(null);
 
   // Rollback state
   const [rollbackWeekId, setRollbackWeekId] = useState<string | null>(null);
@@ -3007,10 +3015,10 @@ export default function AdminPage() {
       <CommercialSummaryCard />
 
       {/* GROWTH-003: Retention Recommendations */}
-      <RetentionRecommendationsCard />
+      <RetentionRecommendationsCard onCampaignCreated={() => campaignManagerRef.current?.reload()} />
 
       {/* GROWTH-002: Campaign Manager */}
-      <CampaignManagerCard />
+      <CampaignManagerCard ref={campaignManagerRef} />
 
       {/* GROWTH-001: Manager Engagement Analytics */}
       <GrowthAnalyticsCard />
