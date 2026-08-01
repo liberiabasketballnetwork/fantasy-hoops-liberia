@@ -27,6 +27,7 @@ export type NotificationType =
   | "REPORT"
   | "ADVISOR"
   | "REFERRAL"
+  | "PRIZE"
   | "SYSTEM"
   | "ADMIN";
 
@@ -71,6 +72,7 @@ const DEFAULT_PRIORITY: Record<NotificationType, NotificationPriority> = {
   REPORT:      "normal",
   ADVISOR:     "high",
   REFERRAL:    "normal",
+  PRIZE:       "high",
   SYSTEM:      "normal",
   ADMIN:       "normal",
 };
@@ -85,6 +87,7 @@ const DEFAULT_EXPIRY_DAYS: Record<NotificationType, number> = {
   REPORT:      30,
   ADVISOR:     7,
   REFERRAL:    30,
+  PRIZE:       60,
   SYSTEM:      3,
   ADMIN:       0,
 };

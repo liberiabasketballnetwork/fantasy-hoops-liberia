@@ -25,6 +25,17 @@ export interface PlatformAnalytics {
   campaigns:        CampaignAnalyticsMetrics;
   retention:        RetentionAnalyticsMetrics;
   commercial:       CommercialAnalyticsMetrics;
+  prizes:           PrizeAnalyticsMetrics;
+}
+
+interface PrizeAnalyticsMetrics {
+  totalPrizesCreated: number;
+  totalLrdAwarded:    number;
+  sponsorFunded:      number;
+  platformFunded:     number;
+  pendingApproval:    number;
+  averagePayoutDays:  number;
+  weeklyHistory:      Array<{ week_id: string; label: string; amount: number; paid: boolean }>;
 }
 
 interface CommercialAnalyticsMetrics {
@@ -150,7 +161,7 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
   const [
     users, lineups, weeks, leaderboard, referrals, rewards,
     achievements, notifications, lineupPlayers, platformSettings,
-    campaigns, retentionRecs, sponsors,
+    campaigns, retentionRecs, sponsors, prizePayouts,
   ] = await Promise.all([
     getSheetData("Users"),
     getSheetData("User_Lineups"),
@@ -165,6 +176,7 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     getSheetData("Campaigns").catch(() => []),
     getSheetData("Retention_Recommendations").catch(() => []),
     getSheetData("Sponsors").catch(() => []),
+    getSheetData("Prize_Payouts").catch(() => []),
   ]);
 
   // ── Community Growth ─────────────────────────────────────────────────
@@ -412,6 +424,39 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     whatsappDeliveries:     commWaDeliveries,
   };
 
+  // ── Prize Analytics (BUSINESS-002) ──────────────────────────────────
+
+  const completedPayouts  = prizePayouts.filter((p) => p.status === "completed");
+  const totalLrdAwarded   = completedPayouts.reduce((s, p) => s + Number(p.amount_lrd || 0), 0);
+  const sponsorFunded     = completedPayouts.filter((p) => !!p.sponsor_id).reduce((s, p) => s + Number(p.amount_lrd || 0), 0);
+  const pendingPrizes     = prizePayouts.filter((p) => ["pending","approved"].includes(p.status)).length;
+
+  const prizePayoutTimes  = prizePayouts
+    .filter((p) => p.paid_at && p.created_at)
+    .map((p) => (new Date(p.paid_at).getTime() - new Date(p.created_at).getTime()) / 86400000);
+  const avgPayoutDays = prizePayoutTimes.length
+    ? Math.round((prizePayoutTimes.reduce((s, d) => s + d, 0) / prizePayoutTimes.length) * 10) / 10
+    : 0;
+
+  const weeklyPrizeMap: Record<string, number> = {};
+  for (const p of completedPayouts) {
+    if (p.week_id) weeklyPrizeMap[p.week_id] = (weeklyPrizeMap[p.week_id] || 0) + Number(p.amount_lrd || 0);
+  }
+  const weeklyHistory = Object.entries(weeklyPrizeMap).map(([week_id, amount]) => {
+    const week = weeks.find((w) => String(w.week_id) === String(week_id));
+    return { week_id, label: week?.start_date || week_id, amount, paid: true };
+  });
+
+  const prizeAnalytics: PrizeAnalyticsMetrics = {
+    totalPrizesCreated: prizePayouts.length,
+    totalLrdAwarded,
+    sponsorFunded,
+    platformFunded:     totalLrdAwarded - sponsorFunded,
+    pendingApproval:    pendingPrizes,
+    averagePayoutDays:  avgPayoutDays,
+    weeklyHistory,
+  };
+
   return {
     analyticsVersion: "1.0",
     generatedAt:      now.toISOString(),
@@ -425,5 +470,6 @@ export async function getPlatformAnalytics(): Promise<PlatformAnalytics> {
     campaigns:   campaignAnalytics,
     retention:   retentionAnalytics,
     commercial,
+    prizes:      prizeAnalytics,
   };
 }

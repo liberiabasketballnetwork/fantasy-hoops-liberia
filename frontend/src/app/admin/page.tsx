@@ -124,195 +124,189 @@ function PasswordResetRequestsCard() {
   );
 }
 
-// ─── Referral Reward Console (FEATURE-003) ───────────────────────────────
+// ─── Unified Rewards Console (BUSINESS-002) ─────────────────────────────
+// Reads both Prize_Payouts and Referral_Rewards in memory.
+// Never merges sheets. Referral_Rewards and its service remain untouched.
 
-type RewardRow = {
-  reward_id: string; referrer_name: string; referred_name: string;
-  reward_value: number; reward_type: string; status: string;
-  created_at: string; payment_reference: string; admin_notes: string;
+type PayoutRow = {
+  _type:         "prize" | "referral";
+  id:            string;
+  display_title: string;
+  display_sub:   string;
+  amount:        number;
+  status:        string;
+  source_type:   string;
+  created_at:    string;
+  sponsor_id?:   string;
 };
 
-function ReferralRewardConsole() {
-  const [rewards,    setRewards]    = React.useState<RewardRow[]>([]);
-  const [filter,     setFilter]     = React.useState("pending");
-  const [loading,    setLoading]    = React.useState(false);
-  const [acting,     setActing]     = React.useState<string | null>(null);
-  const [noteInput,  setNoteInput]  = React.useState<Record<string,string>>({});
-  const [payRef,     setPayRef]     = React.useState<Record<string,string>>({});
-  const [msg,        setMsg]        = React.useState("");
+const PAYOUT_STATUS_CLS: Record<string, string> = {
+  pending:  "text-yellow-400", approved: "text-court-green",
+  paid:     "text-court-green", completed: "text-blue-400",
+  rejected: "text-red-400",    cancelled: "text-gray-500",
+  reversed: "text-red-400",    suspended: "text-orange-400",
+};
+
+function RewardsConsole({ campaignWorkspaceRef }: { campaignWorkspaceRef?: React.RefObject<any> }) {
+  const [rows,    setRows]    = React.useState<PayoutRow[]>([]);
+  const [filter,  setFilter]  = React.useState("pending");
+  const [loading, setLoading] = React.useState(false);
+  const [acting,  setActing]  = React.useState<string | null>(null);
+  const [notes,   setNotes]   = React.useState<Record<string, string>>({});
+  const [payRef,  setPayRef]  = React.useState<Record<string, string>>({});
+  const [msg,     setMsg]     = React.useState("");
+
+  const statusParam = ["all","weekly","referral","sponsor"].includes(filter) ? "" : filter;
 
   const load = React.useCallback(() => {
     setLoading(true);
-    api.get(`/admin/referral-rewards?status=${filter}`)
-      .then((r: any) => setRewards(r.data.rewards || []))
+    Promise.all([
+      api.get(`/admin/prize-payouts${statusParam ? `?status=${statusParam}` : ""}`),
+      api.get(`/admin/referral-rewards${statusParam ? `?status=${statusParam}` : ""}`),
+    ])
+      .then(([prizeRes, refRes]) => {
+        const prizes: PayoutRow[] = (prizeRes.data.payouts || []).map((p: any) => ({
+          _type:         "prize" as const,
+          id:            p.payout_id,
+          display_title: `${p.source_type === "weekly_winner" ? "🥇" : p.source_type === "weekly_runner_up" ? "🥈" : "🎯"} ${(p.source_type || "").replace(/_/g, " ")}`,
+          display_sub:   `Week ${p.week_id || "—"} · LRD ${Number(p.amount_lrd || 0).toLocaleString()}${p.sponsor_id ? " · Sponsored" : ""}`,
+          amount:        Number(p.amount_lrd || 0),
+          status:        p.status,
+          source_type:   p.source_type,
+          created_at:    p.created_at,
+          sponsor_id:    p.sponsor_id,
+        }));
+        const refs: PayoutRow[] = (refRes.data.rewards || []).map((r: any) => ({
+          _type:         "referral" as const,
+          id:            r.reward_id,
+          display_title: `🤝 ${r.referrer_name} → ${r.referred_name}`,
+          display_sub:   `Referral Reward · LRD ${Number(r.reward_value || 0).toLocaleString()} · ${r.reward_type}`,
+          amount:        Number(r.reward_value || 0),
+          status:        r.status,
+          source_type:   "referral_reward",
+          created_at:    r.created_at,
+        }));
+        let merged = [...prizes, ...refs].sort(
+          (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        );
+        if (filter === "weekly")   merged = merged.filter(r => ["weekly_winner","weekly_runner_up"].includes(r.source_type));
+        if (filter === "referral") merged = merged.filter(r => r.source_type === "referral_reward");
+        if (filter === "sponsor")  merged = merged.filter(r => !!r.sponsor_id);
+        setRows(merged);
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [filter]);
 
   React.useEffect(() => { load(); }, [load]);
 
-  async function act(reward_id: string, action: "approve" | "reject" | "mark-paid") {
-    setActing(reward_id); setMsg("");
+  async function act(row: PayoutRow, action: string) {
+    setActing(row.id); setMsg("");
     try {
-      const body: any = { admin_notes: noteInput[reward_id] || "" };
-      if (action === "mark-paid") body.payment_reference = payRef[reward_id] || "";
-      await api.post(`/admin/referral-rewards/${reward_id}/${action}`, body);
-      setMsg(`✅ ${action === "approve" ? "Approved" : action === "reject" ? "Rejected" : "Marked Paid"}`);
+      const body: any = { admin_notes: notes[row.id] || "" };
+      if (action === "mark-paid") body.payment_reference = payRef[row.id] || "";
+      const base = row._type === "prize"
+        ? `/admin/prize-payouts/${row.id}`
+        : `/admin/referral-rewards/${row.id}`;
+      await api.post(`${base}/${action}`, body);
+      setMsg("Done");
       load();
     } catch (err: any) {
-      setMsg(`❌ ${err?.response?.data?.error || "Action failed."}`);
+      setMsg(err?.response?.data?.error || "Action failed.");
     } finally { setActing(null); }
   }
 
-  const STATUS_CLS: Record<string, string> = {
-    pending:  "text-yellow-400", approved: "text-court-green",
-    paid:     "text-court-green", rejected: "text-red-400",
-    suspended:"text-orange-400", reversed: "text-red-400",
-  };
+  const FILTERS = ["all","pending","approved","paid","completed","weekly","referral","sponsor"];
 
   return (
     <div className="card p-5">
-      <h2 className="font-bold mb-1">🎁 Referral Reward Console</h2>
-      <p className="text-xs text-gray-500 mb-3">Review and action referral rewards. Payment is made out-of-band.</p>
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div>
+          <h2 className="font-bold">🏆 Rewards Console</h2>
+          <p className="text-xs text-gray-500 mt-0.5">Weekly prizes, referral rewards, and sponsor promotions.</p>
+        </div>
+        <button onClick={load} className="text-xs text-gray-500 hover:text-gray-300">Refresh</button>
+      </div>
 
-      <div className="flex flex-wrap gap-2 mb-4">
-        {["pending","approved","paid","rejected"].map((s) => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`px-3 py-1 rounded text-xs font-semibold capitalize ${filter === s ? "btn-primary" : "bg-[#1f2733] text-gray-400"}`}>
-            {s}
+      <div className="flex flex-wrap gap-1.5 mb-4">
+        {FILTERS.map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            className={`px-3 py-1 rounded text-xs font-semibold capitalize ${filter === f ? "btn-primary" : "bg-[#1f2733] text-gray-400"}`}>
+            {f}
           </button>
         ))}
       </div>
 
       {loading ? <div className="h-16 animate-pulse bg-[#1f2733] rounded" /> :
-       rewards.length === 0 ? <p className="text-sm text-gray-400">No {filter} rewards.</p> : (
-        <div className="flex flex-col gap-4">
-          {rewards.map((r) => (
-            <div key={r.reward_id} className="bg-[#0b0f14] rounded-lg p-4 flex flex-col gap-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+       rows.length === 0 ? <p className="text-sm text-gray-400">No {filter} rewards.</p> : (
+        <div className="flex flex-col gap-3">
+          {rows.map(r => (
+            <div key={r.id} className="bg-[#0b0f14] rounded-lg p-4 flex flex-col gap-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
-                  <p className="text-sm font-semibold">{r.referrer_name} → {r.referred_name}</p>
-                  <p className="text-xs text-gray-500">{new Date(r.created_at).toLocaleDateString()} · LRD {r.reward_value} · {r.reward_type}</p>
-                  {r.payment_reference && <p className="text-xs text-gray-500">Ref: {r.payment_reference}</p>}
+                  <p className="text-sm font-semibold">{r.display_title}</p>
+                  <p className="text-xs text-gray-500">{r.display_sub}</p>
+                  <p className="text-xs text-gray-600">{new Date(r.created_at).toLocaleDateString()}</p>
                 </div>
-                <span className={`text-xs font-bold capitalize ${STATUS_CLS[r.status] || "text-gray-400"}`}>{r.status}</span>
+                <span className={`text-xs font-bold capitalize flex-shrink-0 ${PAYOUT_STATUS_CLS[r.status] || "text-gray-400"}`}>{r.status}</span>
               </div>
 
+              {/* Pending */}
               {r.status === "pending" && (
                 <div className="flex flex-col gap-2">
                   <input className="input-field text-xs" placeholder="Admin notes (required for rejection)"
-                    value={noteInput[r.reward_id] || ""} onChange={e => setNoteInput(n => ({ ...n, [r.reward_id]: e.target.value }))} />
+                    value={notes[r.id] || ""} onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))} />
                   <div className="flex gap-2 flex-wrap">
-                    <button onClick={() => act(r.reward_id, "approve")} disabled={acting === r.reward_id}
-                      className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">✅ Approve</button>
-                    <button onClick={() => act(r.reward_id, "reject")} disabled={acting === r.reward_id || !noteInput[r.reward_id]}
-                      className="px-3 py-1.5 rounded bg-red-900/40 text-red-400 text-xs font-semibold disabled:opacity-50">❌ Reject</button>
+                    <button onClick={() => act(r, "approve")} disabled={acting === r.id}
+                      className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">Approve</button>
+                    <button onClick={() => act(r, "reject")} disabled={acting === r.id || !notes[r.id]}
+                      className="px-3 py-1.5 rounded bg-red-900/40 text-red-400 text-xs font-semibold disabled:opacity-50">Reject</button>
+                    {r._type === "prize" && (
+                      <button onClick={() => { if (!notes[r.id]) { setMsg("Notes required"); return; } act(r, "cancel"); }}
+                        className="px-3 py-1.5 rounded bg-[#1f2733] text-gray-400 text-xs font-semibold">Cancel</button>
+                    )}
                   </div>
                 </div>
               )}
 
+              {/* Approved */}
               {r.status === "approved" && (
                 <div className="flex flex-col gap-2">
                   <input className="input-field text-xs" placeholder="Payment reference (required)"
-                    value={payRef[r.reward_id] || ""} onChange={e => setPayRef(p => ({ ...p, [r.reward_id]: e.target.value }))} />
+                    value={payRef[r.id] || ""} onChange={e => setPayRef(p => ({ ...p, [r.id]: e.target.value }))} />
                   <input className="input-field text-xs" placeholder="Admin notes (optional)"
-                    value={noteInput[r.reward_id] || ""} onChange={e => setNoteInput(n => ({ ...n, [r.reward_id]: e.target.value }))} />
-                  <button onClick={() => act(r.reward_id, "mark-paid")} disabled={acting === r.reward_id || !payRef[r.reward_id]}
-                    className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50 w-fit">💰 Mark Paid</button>
+                    value={notes[r.id] || ""} onChange={e => setNotes(n => ({ ...n, [r.id]: e.target.value }))} />
+                  <button onClick={() => act(r, "mark-paid")} disabled={acting === r.id || !payRef[r.id]}
+                    className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50 w-fit">Mark Paid</button>
                 </div>
+              )}
+
+              {/* Paid (prize only) */}
+              {r.status === "paid" && r._type === "prize" && (
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={() => act(r, "complete")} disabled={acting === r.id}
+                    className="btn-primary text-xs py-1.5 px-3 disabled:opacity-50">Mark Complete</button>
+                  <button onClick={() => {
+                    if (!notes[r.id]) { setMsg("Notes required to reverse"); return; }
+                    act(r, "reverse");
+                  }} className="px-3 py-1.5 rounded bg-red-900/40 text-red-400 text-xs font-semibold">
+                    Reverse
+                  </button>
+                </div>
+              )}
+
+              {/* Completed — Create Announcement Campaign */}
+              {r.status === "completed" && r._type === "prize" && campaignWorkspaceRef && (
+                <button onClick={() => campaignWorkspaceRef.current?.newCampaign?.()}
+                  className="text-xs text-court-orange hover:opacity-80 w-fit">
+                  Create Announcement Campaign
+                </button>
               )}
             </div>
           ))}
         </div>
       )}
-      {msg && <p className="text-xs mt-3">{msg}</p>}
-    </div>
-  );
-}
-
-// ─── Team Status Management Card (FEATURE-002) ───────────────────────────
-
-type TeamRow = { team_id: string; team_name: string; status: string; division?: string };
-
-function TeamManagementCard() {
-  const [teams,   setTeams]   = React.useState<TeamRow[]>([]);
-  const [loading, setLoading] = React.useState(true);
-  const [saving,  setSaving]  = React.useState<string | null>(null); // team_id being saved
-  const [msg,     setMsg]     = React.useState("");
-
-  React.useEffect(() => {
-    api.get("/admin/teams")
-      .then((r: any) => setTeams(r.data.teams || []))
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  }, []);
-
-  async function updateStatus(team: TeamRow, newStatus: string) {
-    if (newStatus === team.status) return;
-    setSaving(team.team_id); setMsg("");
-    try {
-      await api.patch(`/admin/teams/${team.team_id}/status`, { status: newStatus });
-      setTeams((prev) =>
-        prev.map((t) => t.team_id === team.team_id ? { ...t, status: newStatus } : t)
-      );
-      setMsg(`✅ "${team.team_name}" → ${newStatus}`);
-    } catch (err: any) {
-      setMsg(`❌ Failed: ${err?.response?.data?.error || "Unknown error"}`);
-    } finally {
-      setSaving(null);
-    }
-  }
-
-  const STATUS_STYLES: Record<string, string> = {
-    Active:     "bg-court-green/15 text-court-green",
-    Eliminated: "bg-red-500/15 text-red-400",
-    Suspended:  "bg-yellow-500/15 text-yellow-400",
-  };
-
-  return (
-    <div className="card p-5">
-      <h2 className="font-bold mb-1">🏀 Team Status Management</h2>
-      <p className="text-xs text-gray-500 mb-4">
-        Eliminating a team instantly removes all its players from the draft pool.
-        No player records are modified.
-      </p>
-
-      {loading ? (
-        <div className="h-20 animate-pulse bg-[#1f2733] rounded" />
-      ) : teams.length === 0 ? (
-        <p className="text-sm text-gray-400">No teams found.</p>
-      ) : (
-        <div className="flex flex-col gap-2">
-          {teams.map((team) => (
-            <div key={team.team_id} className="flex items-center justify-between gap-3 py-2 border-b border-[#1f2733] last:border-0 flex-wrap">
-              <div className="flex items-center gap-2 min-w-0">
-                <span className={`text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${STATUS_STYLES[team.status] || "bg-[#1f2733] text-gray-400"}`}>
-                  {team.status || "Unknown"}
-                </span>
-                <p className="text-sm font-medium truncate">{team.team_name}</p>
-                {team.division && <p className="text-xs text-gray-500 flex-shrink-0">{team.division}</p>}
-              </div>
-              <div className="flex gap-1.5 flex-shrink-0">
-                {["Active", "Eliminated", "Suspended"].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => updateStatus(team, s)}
-                    disabled={saving === team.team_id || team.status === s}
-                    className={`px-2.5 py-1 rounded text-xs font-semibold transition-colors disabled:opacity-40 ${
-                      team.status === s
-                        ? `${STATUS_STYLES[s]} cursor-default`
-                        : "bg-[#1f2733] hover:bg-[#2a3441] text-gray-300"
-                    }`}
-                  >
-                    {saving === team.team_id && team.status !== s ? "…" : s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-      {msg && <p className="text-xs mt-3">{msg}</p>}
+      {msg && <p className="text-xs mt-3 text-gray-400">{msg}</p>}
     </div>
   );
 }
@@ -2651,7 +2645,21 @@ export default function AdminPage() {
                     <p className="text-sm font-semibold text-court-green">✅ Gameweek Finalized</p>
                     <p className="text-xs text-gray-400 mt-1">Scores calculated, prices updated. You may now create the next gameweek.</p>
                   </div>
-                  <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block w-fit">📋 View Final Report</a>
+                  <a href={`/reports/${w.week_id}`} className="px-3 py-1.5 rounded bg-[#1f2733] hover:bg-[#2a3441] text-xs font-semibold inline-block w-fit">View Final Report</a>
+                  {/* BUSINESS-002: Generate prize records */}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await api.post(`/admin/prize-payouts/generate-weekly/${w.week_id}`);
+                        setMessage(`Prize records: ${res.data.created} created, ${res.data.skipped} already existed.`);
+                      } catch (err: any) {
+                        setMessage(err?.response?.data?.error || "Failed to generate prize records.");
+                      }
+                    }}
+                    className="px-3 py-1.5 rounded bg-court-orange text-white text-xs font-semibold hover:opacity-90 w-fit"
+                  >
+                    Generate Prize Records
+                  </button>
                   <div className="flex flex-col gap-2">
                     <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Create Next Gameweek</p>
                     <div className="flex flex-wrap gap-2">
@@ -3150,11 +3158,8 @@ export default function AdminPage() {
       {/* FEATURE-004: Password Reset Requests */}
       <PasswordResetRequestsCard />
 
-      {/* FEATURE-003: Referral Reward Console */}
-      <ReferralRewardConsole />
-
-      {/* FEATURE-002: Team Status Management */}
-      <TeamManagementCard />
+      {/* BUSINESS-002: Unified Rewards Console */}
+      <RewardsConsole campaignWorkspaceRef={campaignManagerRef} />
 
       {/* BUSINESS-001: Commercial Summary */}
       <CommercialSummaryCard />
