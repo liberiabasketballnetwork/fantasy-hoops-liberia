@@ -17,6 +17,7 @@ import { channelRegistry } from "../services/channelRegistry";
 import {
   createCampaign, listCampaigns, getCampaign,
   previewCampaign, sendCampaign, cancelCampaign,
+  updateCampaign, archiveCampaign,
   searchUsers, AUDIENCE_LABELS,
 } from "../services/campaignService";
 import { deliverCampaign } from "../services/communicationHub";
@@ -142,6 +143,28 @@ router.post("/admin/campaigns/:id/send", authenticate, requireAdmin, async (req:
     res.json(result);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Send failed." });
+  }
+});
+
+// ─── Update draft (GROWTH-002.1) ─────────────────────────────────────────
+
+router.patch("/admin/campaigns/:id", authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const updated = await updateCampaign(req.params.id, req.body, req.user!.user_id);
+    res.json({ campaign: updated });
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || "Update failed." });
+  }
+});
+
+// ─── Archive draft (GROWTH-002.1 — replaces hard delete) ─────────────────
+
+router.post("/admin/campaigns/:id/archive", authenticate, requireAdmin, async (req: AuthRequest, res) => {
+  try {
+    const result = await archiveCampaign(req.params.id, req.user!.user_id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ error: err?.message || "Archive failed." });
   }
 });
 

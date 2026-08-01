@@ -38,7 +38,7 @@ export const AUDIENCE_LABELS: Record<AudienceType, string> = {
 
 // ─── Campaign status ──────────────────────────────────────────────────────
 
-export type CampaignStatus = "draft" | "sending" | "sent" | "cancelled";
+export type CampaignStatus = "draft" | "sending" | "sent" | "cancelled" | "archived";
 
 // ─── Audience resolution ──────────────────────────────────────────────────
 
@@ -315,6 +315,91 @@ async function _deliverCampaign(
   });
 
   console.log(`[Campaign] ${campaign_id} complete — notification confirmed:${notifDelivered} in ${durationMs}ms`);
+}
+
+// ─── Update campaign (draft editing — GROWTH-002.1) ───────────────────────
+
+const MUTABLE_FIELDS = [
+  "title", "subject", "message", "notification_type", "audience_type",
+  "audience_filter", "link", "priority", "channels", "sponsor_id",
+] as const;
+
+type UpdateCampaignInput = Partial<{
+  title:             string;
+  subject:           string;
+  message:           string;
+  notification_type: NotificationType;
+  audience_type:     AudienceType;
+  audience_filter:   Record<string, any>;
+  link:              string;
+  priority:          NotificationPriority;
+  channels:          ChannelId[];
+  sponsor_id:        string;
+}>;
+
+export async function updateCampaign(
+  campaign_id: string,
+  input: UpdateCampaignInput,
+  admin_id: string
+) {
+  const campaign = await getCampaign(campaign_id);
+  if (!campaign) throw new Error("Campaign not found.");
+  if (campaign.status !== "draft") {
+    throw new Error(`Cannot edit a campaign with status "${campaign.status}". Only drafts can be edited.`);
+  }
+
+  // Build updated row — only touch fields explicitly provided in input
+  const updated = { ...campaign };
+
+  if (input.title             !== undefined) updated.title             = input.title;
+  if (input.subject           !== undefined) updated.subject           = input.subject;
+  if (input.message           !== undefined) updated.message           = input.message;
+  if (input.notification_type !== undefined) updated.notification_type = input.notification_type;
+  if (input.audience_type     !== undefined) updated.audience_type     = input.audience_type;
+  if (input.audience_filter   !== undefined) updated.audience_filter   = JSON.stringify(input.audience_filter);
+  if (input.link              !== undefined) updated.link              = input.link;
+  if (input.priority          !== undefined) updated.priority          = input.priority;
+  if (input.channels          !== undefined) updated.channels          = JSON.stringify(input.channels);
+  if (input.sponsor_id        !== undefined) updated.sponsor_id        = input.sponsor_id;
+
+  await updateRow("Campaigns", "campaign_id", campaign_id, updated);
+
+  await logAdminAction({
+    admin_id,
+    action_type: "UPDATE_CAMPAIGN",
+    entity_type: "CAMPAIGN",
+    entity_id:   campaign_id,
+    details:     `Campaign "${updated.title}" updated. Fields: ${Object.keys(input).join(", ")}.`,
+    status:      "success",
+  });
+
+  return updated;
+}
+
+// ─── Archive campaign (GROWTH-002.1 — replaces hard delete) ──────────────
+
+export async function archiveCampaign(campaign_id: string, admin_id: string) {
+  const campaign = await getCampaign(campaign_id);
+  if (!campaign) throw new Error("Campaign not found.");
+  if (campaign.status !== "draft") {
+    throw new Error(`Cannot archive a campaign with status "${campaign.status}". Only drafts can be archived.`);
+  }
+
+  await updateRow("Campaigns", "campaign_id", campaign_id, {
+    ...campaign,
+    status: "archived",
+  });
+
+  await logAdminAction({
+    admin_id,
+    action_type: "ARCHIVE_CAMPAIGN",
+    entity_type: "CAMPAIGN",
+    entity_id:   campaign_id,
+    details:     `Campaign "${campaign.title}" archived.`,
+    status:      "success",
+  });
+
+  return { campaign_id, status: "archived" };
 }
 
 // ─── Cancel campaign ──────────────────────────────────────────────────────

@@ -377,7 +377,7 @@ const REC_ICONS: Record<string, string> = {
   ACHIEVEMENT_CELEBRATION: "🏅",
 };
 
-function RetentionRecommendationsCard({ onCampaignCreated }: { onCampaignCreated?: () => void }) {
+function RetentionRecommendationsCard({ onCampaignCreated }: { onCampaignCreated?: (campaignId: string) => void }) {
   const [recs,      setRecs]      = React.useState<RecRow[]>([]);
   const [loading,   setLoading]   = React.useState(false);
   const [generating,setGenerating]= React.useState(false);
@@ -411,10 +411,10 @@ function RetentionRecommendationsCard({ onCampaignCreated }: { onCampaignCreated
     setActing(id); setMsg("");
     try {
       const res = await api.post(`/admin/retention/${id}/convert`);
-      setMsg(`Campaign draft created: ${res.data.campaign_id.slice(0, 8)}... Open Campaign Manager to preview and send.`);
+      setMsg(`Campaign draft created: ${res.data.campaign_id.slice(0, 8)}... Opening editor...`);
       load();
-      // AUDIT-002 fix: notify Campaign Manager to refresh its list
-      onCampaignCreated?.();
+      // GROWTH-002.1: open the draft immediately in Campaign Manager
+      onCampaignCreated?.(res.data.campaign_id);
     } catch (err: any) {
       setMsg(err?.response?.data?.error || "Conversion failed.");
     } finally { setActing(null); }
@@ -528,10 +528,16 @@ const AUDIENCE_LABELS: Record<string, string> = {
 
 const NOTIF_TYPES = ["SYSTEM","ADMIN","REFERRAL","ACHIEVEMENT","REPORT","LEAGUE"];
 
-type CampaignRow = { campaign_id: string; title: string; subject: string; audience_type: string; status: string; recipient_count: string | number; sent_at: string; created_at: string; };
-type Step = "list" | "content" | "audience" | "preview" | "sending" | "sent";
+type CampaignRow = { campaign_id: string; title: string; subject: string; audience_type: string; status: string; recipient_count: string | number; sent_at: string; created_at: string; channels?: string; whatsapp_queue_status?: string; };
+type Step = "list" | "content" | "preview" | "sending" | "sent";
 
-const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(function CampaignManagerCard(_props, ref) {
+const CampaignManagerCard = React.forwardRef<{
+  reload:             () => void;
+  newCampaign:        () => void;
+  openDraft:          (id: string) => void;
+  openSummary:        (id: string) => void;
+  openWhatsAppQueue:  (id: string) => void;
+}, {}>(function CampaignManagerCard(_props, ref) {
   const [step,       setStep]       = React.useState<Step>("list");
   const [campaigns,  setCampaigns]  = React.useState<CampaignRow[]>([]);
   const [loading,    setLoading]    = React.useState(false);
@@ -568,8 +574,82 @@ const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(functio
     finally { setLoading(false); }
   }
 
-  // AUDIT-002 fix: expose reload to parent via ref
-  React.useImperativeHandle(ref, () => ({ reload: loadList }));
+  // ── Workspace public API (GROWTH-002.1) ───────────────────────────────
+
+  async function openDraft(id: string) {
+    setMsg(""); setLoading(true);
+    try {
+      const res = await api.get(`/admin/campaigns/${id}`);
+      const c = res.data.campaign;
+      if (!c) { setMsg("Campaign not found."); return; }
+      if (c.status !== "draft") { setMsg(`Cannot edit a ${c.status} campaign.`); return; }
+      // Populate form with existing campaign data
+      const channels = c.channels ? JSON.parse(c.channels) : ["notification"];
+      const filter   = c.audience_filter ? JSON.parse(c.audience_filter) : {};
+      setForm({
+        title:             c.title             || "",
+        subject:           c.subject           || "",
+        message:           c.message           || "",
+        notification_type: c.notification_type || "SYSTEM",
+        link:              c.link              || "",
+        priority:          c.priority          || "normal",
+        audience_type:     c.audience_type     || "ALL_MANAGERS",
+        audience_filter:   filter,
+        selected_user:     null,
+        channels,
+      });
+      setDraftId(id);
+      setStep("content");
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Failed to open campaign.");
+    } finally { setLoading(false); }
+  }
+
+  async function openSummary(id: string) {
+    setMsg(""); setLoading(true);
+    try {
+      const res = await api.get(`/admin/campaigns/${id}`);
+      setSendResult(res.data.campaign);
+      setDraftId(id);
+      setStep("sent");
+    } catch { setMsg("Failed to load campaign."); }
+    finally { setLoading(false); }
+    // Load WhatsApp queue if applicable (same logic as polling completion)
+    try {
+      const res = await api.get(`/admin/campaigns/${id}`);
+      const c = res.data.campaign;
+      const channels = c?.channels ? JSON.parse(c.channels) : ["notification"];
+      if (channels.includes("whatsapp")) {
+        const lsKey = `wa_queue_${id}`;
+        const cached = localStorage.getItem(lsKey);
+        if (cached) { setWaQueue(JSON.parse(cached)); setWaIdx(0); }
+        else {
+          api.get(`/admin/campaigns/${id}/whatsapp-queue`)
+            .then((r: any) => {
+              const links = r.data.links || [];
+              setWaQueue(links); setWaIdx(0);
+              localStorage.setItem(lsKey, JSON.stringify(links));
+            }).catch(() => {});
+        }
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  function openWhatsAppQueue(id: string) { openSummary(id); }
+
+  function newCampaign() {
+    reset();
+    setStep("content");
+  }
+
+  // AUDIT-002 + GROWTH-002.1: expose full workspace API via ref
+  React.useImperativeHandle(ref, () => ({
+    reload:            loadList,
+    newCampaign,
+    openDraft,
+    openSummary,
+    openWhatsAppQueue,
+  }));
 
   React.useEffect(() => { loadList(); }, []);
 
@@ -627,21 +707,29 @@ const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(functio
     try {
       const filter = form.audience_type === "SINGLE_USER" && form.selected_user
         ? { user_id: form.selected_user.user_id } : {};
-      const res = await api.post("/admin/campaigns", {
+      const payload = {
         title: form.title, subject: form.subject, message: form.message,
         notification_type: form.notification_type,
         audience_type: form.audience_type, audience_filter: filter,
         link: form.link || undefined, priority: form.priority,
-        channels: form.channels,    // GROWTH-004
-      });
-      setDraftId(res.data.campaign_id);
+        channels: form.channels,
+      };
+      let campaign_id = draftId;
+      if (draftId) {
+        // GROWTH-002.1: editing existing draft — PATCH instead of POST
+        await api.patch(`/admin/campaigns/${draftId}`, payload);
+      } else {
+        const res = await api.post("/admin/campaigns", payload);
+        campaign_id = res.data.campaign_id;
+        setDraftId(campaign_id);
+      }
       setStep("preview");
-      const pRes = await api.get(`/admin/campaigns/${res.data.campaign_id}/preview`);
+      const pRes = await api.get(`/admin/campaigns/${campaign_id}/preview`);
       setPreview(pRes.data);
       setConfirmEnabled(false);
       setTimeout(() => setConfirmEnabled(true), 2000);
     } catch (err: any) {
-      setMsg(err?.response?.data?.error || "Failed to create campaign.");
+      setMsg(err?.response?.data?.error || "Failed to save campaign.");
     } finally { setLoading(false); }
   }
 
@@ -668,9 +756,19 @@ const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(functio
     setMsg(""); loadList();
   }
 
+  async function archiveDraft(id: string) {
+    try {
+      await api.post(`/admin/campaigns/${id}/archive`);
+      loadList();
+    } catch (err: any) {
+      setMsg(err?.response?.data?.error || "Archive failed.");
+    }
+  }
+
   const STATUS_CLS: Record<string, string> = {
-    draft: "text-yellow-400", sending: "text-court-orange",
-    sent: "text-court-green", cancelled: "text-gray-500",
+    draft:    "text-yellow-400", sending:  "text-court-orange",
+    sent:     "text-court-green", cancelled: "text-gray-500",
+    archived: "text-gray-600",
   };
 
   return (
@@ -678,12 +776,17 @@ const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(functio
       <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <h2 className="font-bold">📣 Campaign Manager</h2>
         {step === "list" && (
-          <button onClick={() => setStep("content")} className="btn-primary text-xs py-1.5 px-3">+ New Campaign</button>
+          <button onClick={newCampaign} className="btn-primary text-xs py-1.5 px-3">+ New Campaign</button>
         )}
         {step !== "list" && (
-          <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-300">Cancel</button>
+          <button onClick={reset} className="text-xs text-gray-500 hover:text-gray-300">← Back to list</button>
         )}
       </div>
+      {step === "content" && (
+        <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold mb-2">
+          {draftId ? "Editing Draft" : "Step 1 — Campaign Content"}
+        </p>
+      )}
 
       {/* ── Step: List ── */}
       {step === "list" && (
@@ -697,19 +800,56 @@ const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(functio
                     <th className="text-left py-2 pr-3">Campaign</th>
                     <th className="text-left py-2 px-2">Audience</th>
                     <th className="text-center py-2 px-2">Status</th>
-                    <th className="text-right py-2 pl-2">Sent To</th>
+                    <th className="text-right py-2 pl-2">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {campaigns.map((c) => (
-                    <tr key={c.campaign_id} className="border-b border-[#1f2733]">
+                    <tr key={c.campaign_id} className="border-b border-[#1f2733] hover:bg-[#0b0f14]">
                       <td className="py-2 pr-3">
-                        <p className="font-medium truncate max-w-[180px]">{c.title}</p>
+                        <p className="font-medium truncate max-w-[160px]">{c.title}</p>
                         <p className="text-gray-600 text-[10px]">{new Date(c.created_at).toLocaleDateString()}</p>
                       </td>
-                      <td className="py-2 px-2 text-gray-400 text-[11px]">{AUDIENCE_LABELS[c.audience_type] || c.audience_type}</td>
+                      <td className="py-2 px-2 text-gray-400 text-[11px] hidden sm:table-cell">{AUDIENCE_LABELS[c.audience_type] || c.audience_type}</td>
                       <td className={`py-2 px-2 text-center font-semibold capitalize ${STATUS_CLS[c.status] || "text-gray-400"}`}>{c.status}</td>
-                      <td className="py-2 pl-2 text-right text-gray-400">{c.recipient_count || "—"}</td>
+                      <td className="py-2 pl-2 text-right">
+                        {/* Draft actions */}
+                        {c.status === "draft" && (
+                          <div className="flex gap-1 justify-end flex-wrap">
+                            <button onClick={() => openDraft(c.campaign_id)}
+                              className="px-2 py-1 rounded bg-court-orange text-white text-[10px] font-semibold hover:opacity-90">
+                              Open
+                            </button>
+                            <button onClick={() => archiveDraft(c.campaign_id)}
+                              className="px-2 py-1 rounded bg-[#1f2733] text-gray-400 text-[10px] hover:bg-[#2a3441]">
+                              Archive
+                            </button>
+                          </div>
+                        )}
+                        {/* Sending: progress indicator */}
+                        {c.status === "sending" && (
+                          <span className="text-[10px] text-court-orange animate-pulse">Sending…</span>
+                        )}
+                        {/* Sent actions */}
+                        {c.status === "sent" && (
+                          <div className="flex gap-1 justify-end flex-wrap">
+                            <button onClick={() => openSummary(c.campaign_id)}
+                              className="px-2 py-1 rounded bg-[#1f2733] text-[10px] hover:bg-[#2a3441]">
+                              Summary
+                            </button>
+                            {c.whatsapp_queue_status === "pending" && (
+                              <button onClick={() => openWhatsAppQueue(c.campaign_id)}
+                                className="px-2 py-1 rounded bg-[#25D366]/20 text-[#25D366] text-[10px] font-semibold hover:bg-[#25D366]/30">
+                                WhatsApp
+                              </button>
+                            )}
+                          </div>
+                        )}
+                        {/* Archived/cancelled: view only */}
+                        {(c.status === "archived" || c.status === "cancelled") && (
+                          <span className="text-[10px] text-gray-600">—</span>
+                        )}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -722,7 +862,6 @@ const CampaignManagerCard = React.forwardRef<{ reload: () => void }, {}>(functio
       {/* ── Step: Content ── */}
       {step === "content" && (
         <div className="flex flex-col gap-3">
-          <p className="text-xs text-gray-500 uppercase tracking-wide font-semibold">Step 1 — Campaign Content</p>
           {[
             { label: "Internal Title",    key: "title",   placeholder: "e.g. Draft Reminder Week 4" },
             { label: "User Subject Line", key: "subject", placeholder: "What users will see as the notification title" },
@@ -1554,8 +1693,14 @@ export default function AdminPage() {
   const [weekForm, setWeekForm] = useState({ start_date: "", end_date: "", submission_deadline: "" });
   const [teamForm, setTeamForm] = useState({ team_name: "", division: "" });
 
-  // AUDIT-002: ref for cross-card communication (Retention → Campaign Manager)
-  const campaignManagerRef = React.useRef<{ reload: () => void }>(null);
+  // AUDIT-002 + GROWTH-002.1: full Campaign Workspace ref
+  const campaignManagerRef = React.useRef<{
+    reload: () => void;
+    newCampaign: () => void;
+    openDraft: (id: string) => void;
+    openSummary: (id: string) => void;
+    openWhatsAppQueue: (id: string) => void;
+  }>(null);
 
   // Rollback state
   const [rollbackWeekId, setRollbackWeekId] = useState<string | null>(null);
@@ -3015,7 +3160,10 @@ export default function AdminPage() {
       <CommercialSummaryCard />
 
       {/* GROWTH-003: Retention Recommendations */}
-      <RetentionRecommendationsCard onCampaignCreated={() => campaignManagerRef.current?.reload()} />
+      <RetentionRecommendationsCard onCampaignCreated={(id) => {
+        campaignManagerRef.current?.reload();
+        if (id) campaignManagerRef.current?.openDraft(id);
+      }} />
 
       {/* GROWTH-002: Campaign Manager */}
       <CampaignManagerCard ref={campaignManagerRef} />
